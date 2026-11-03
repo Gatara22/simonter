@@ -1,0 +1,139 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: app
+    image: simonter-app:production
+    container_name: simonter-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
+      DB_CONNECTION: ${DB_CONNECTION:-mysql}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-simonter}
+      DB_USERNAME: ${DB_USERNAME:-simonter}
+      DB_PASSWORD: ${DB_PASSWORD:-secret_password}
+      CACHE_STORE: ${CACHE_STORE:-redis}
+      SESSION_DRIVER: ${SESSION_DRIVER:-redis}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      RUN_SEEDER: ${RUN_SEEDER:-false}
+    volumes:
+      - simonter_public_storage:/var/www/html/storage/app/public
+      - simonter_logs:/var/www/html/storage/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - simonter-network
+
+  webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: webserver
+    image: simonter-webserver:production
+    container_name: simonter-webserver
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-80}:80"
+    volumes:
+      - simonter_public_storage:/var/www/html/public/storage:ro
+    depends_on:
+      - app
+    networks:
+      - simonter-network
+
+  queue:
+    image: simonter-app:production
+    container_name: simonter-queue
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "--sleep=3", "--tries=3", "--max-time=3600", "--no-interaction"]
+    env_file:
+      - .env
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_TIMEZONE: ${APP_TIMEZONE:-Asia/Jakarta}
+      DB_CONNECTION: ${DB_CONNECTION:-mysql}
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_DATABASE: ${DB_DATABASE:-simonter}
+      DB_USERNAME: ${DB_USERNAME:-simonter}
+      DB_PASSWORD: ${DB_PASSWORD:-secret_password}
+      CACHE_STORE: ${CACHE_STORE:-redis}
+      SESSION_DRIVER: ${SESSION_DRIVER:-redis}
+      QUEUE_CONNECTION: ${QUEUE_CONNECTION:-redis}
+      REDIS_HOST: ${REDIS_HOST:-redis}
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      RUN_MIGRATIONS: "false"
+      RUN_SEEDER: "false"
+    volumes:
+      - simonter_public_storage:/var/www/html/storage/app/public
+      - simonter_logs:/var/www/html/storage/logs
+    depends_on:
+      - app
+    networks:
+      - simonter-network
+
+  db:
+    image: mysql:8.0
+    container_name: simonter-db
+    restart: unless-stopped
+    command: --default-time-zone=+07:00 --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      TZ: Asia/Jakarta
+      MYSQL_DATABASE: ${DB_DATABASE:-simonter}
+      MYSQL_USER: ${DB_USERNAME:-simonter}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret_password}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-root_secret_password}
+    volumes:
+      - simonter_db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "${DB_USERNAME:-simonter}", "--password=${DB_PASSWORD:-secret_password}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - simonter-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: simonter-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - simonter_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - simonter-network
+
+networks:
+  simonter-network:
+    driver: bridge
+
+volumes:
+  simonter_db_data:
+    driver: local
+  simonter_redis_data:
+    driver: local
+  simonter_public_storage:
+    driver: local
+  simonter_logs:
+    driver: local
+

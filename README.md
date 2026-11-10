@@ -138,12 +138,6 @@ docker compose down
 
 Setelah menjalankan `php artisan db:seed`, Anda dapat masuk menggunakan **Email** atau **NIP** berikut:
 
-| Jabatan / Role | Email | NIP | Password |
-| :--- | :--- | :--- | :--- |
-| **Admin** | `admin@simonter.go.id` | `199509062020121009` | `password` |
-| **Kepala Sub Bagian** | `kasubbag@simonter.go.id` | `199604152021041005` | `password` |
-| **Petugas** | `petugas@simonter.go.id` | `199805122022031002` | `password` |
-
 ---
 
 ## Pengujian Otomatis (Automated Tests)

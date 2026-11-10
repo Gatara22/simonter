@@ -74,6 +74,8 @@
                                         <span class="badge badge-dark badge-pill px-2 py-1">Admin</span>
                                     @elseif($user->jabatan === 'Kepala Sub Bagian')
                                         <span class="badge badge-primary badge-pill px-2 py-1">Kepala Sub Bagian</span>
+                                    @elseif($user->jabatan === 'Panitera Muda')
+                                        <span class="badge badge-success badge-pill px-2 py-1">Panitera Muda</span>
                                     @else
                                         <span class="badge badge-info badge-pill px-2 py-1">Petugas</span>
                                     @endif
@@ -154,6 +156,7 @@
                                         <option value="">Semua Jabatan</option>
                                         <option value="Admin">Admin</option>
                                         <option value="Kepala Sub Bagian">Kepala Sub Bagian</option>
+                                        <option value="Panitera Muda">Panitera Muda</option>
                                         <option value="Petugas">Petugas</option>
                                     </select>
                                 </div>
@@ -217,6 +220,7 @@
                                         <option value="">Semua Jabatan</option>
                                         <option value="Admin">Admin</option>
                                         <option value="Kepala Sub Bagian">Kepala Sub Bagian</option>
+                                        <option value="Panitera Muda">Panitera Muda</option>
                                         <option value="Petugas">Petugas</option>
                                     </select>
                                 </div>

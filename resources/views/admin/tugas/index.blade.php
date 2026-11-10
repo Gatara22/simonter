@@ -102,11 +102,96 @@
         </div>
     </div>
 
+    <!-- Klasifikasi Data Tugas: 2 Bagian (Kesekretariatan & Kepaniteraan) -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body py-3 px-4">
+            <div class="d-flex flex-wrap align-items-center justify-content-between mb-2">
+                <div>
+                    <h6 class="font-weight-bold text-gray-800 mb-0">
+                        <i class="fas fa-sitemap text-primary mr-1"></i> Klasifikasi Data Tugas (Delegasi)
+                    </h6>
+                    <small class="text-muted">
+                        Data tugas diklasifikasikan menjadi 2 bagian: <strong>Kesekretariatan</strong> (Delegasi Kepala Sub Bagian) dan <strong>Kepaniteraan</strong> (Delegasi Panitera Muda).
+                    </small>
+                </div>
+                @if(!empty($activeKlasifikasi))
+                    <a href="{{ route('tugas.index', array_filter(['status' => request('status')])) }}" class="btn btn-xs btn-outline-secondary py-1 px-2 small">
+                        <i class="fas fa-sync-alt mr-1"></i> Tampilkan Semua Klasifikasi
+                    </a>
+                @endif
+            </div>
+
+            <div class="row mt-2">
+                <!-- Semua Klasifikasi -->
+                <div class="col-md-4 mb-2 mb-md-0">
+                    <a href="{{ route('tugas.index', array_filter(['status' => request('status')])) }}"
+                       class="card h-100 text-decoration-none {{ empty($activeKlasifikasi) ? 'border-dark bg-light shadow-sm' : 'border' }}"
+                       style="transition: all 0.15s ease;">
+                        <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="text-xs font-weight-bold text-uppercase {{ empty($activeKlasifikasi) ? 'text-dark' : 'text-muted' }}">
+                                    Semua Klasifikasi
+                                </div>
+                                <div class="small text-muted">Seluruh Data Delegasi Tugas</div>
+                            </div>
+                            <span class="badge badge-dark badge-pill px-3 py-2" style="font-size: 0.85rem;">
+                                {{ $stats['total'] ?? 0 }}
+                            </span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Bagian 1: Kesekretariatan -->
+                <div class="col-md-4 mb-2 mb-md-0">
+                    <a href="{{ route('tugas.index', array_filter(['klasifikasi' => 'Kesekretariatan', 'status' => request('status')])) }}"
+                       class="card h-100 text-decoration-none {{ ($activeKlasifikasi ?? null) === 'Kesekretariatan' ? 'border-primary shadow-sm' : 'border' }}"
+                       style="{{ ($activeKlasifikasi ?? null) === 'Kesekretariatan' ? 'background-color: #eff6ff;' : '' }} transition: all 0.15s ease;">
+                        <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="text-xs font-weight-bold text-primary text-uppercase">
+                                    <i class="fas fa-building mr-1"></i> Kesekretariatan
+                                </div>
+                                <div class="small text-muted">Delegasi Kepala Sub Bagian &amp; Umum</div>
+                            </div>
+                            <span class="badge badge-primary badge-pill px-3 py-2" style="font-size: 0.85rem;">
+                                {{ $stats['kesekretariatan'] ?? 0 }}
+                            </span>
+                        </div>
+                    </a>
+                </div>
+
+                <!-- Bagian 2: Kepaniteraan -->
+                <div class="col-md-4">
+                    <a href="{{ route('tugas.index', array_filter(['klasifikasi' => 'Kepaniteraan', 'status' => request('status')])) }}"
+                       class="card h-100 text-decoration-none {{ ($activeKlasifikasi ?? null) === 'Kepaniteraan' ? 'border-success shadow-sm' : 'border' }}"
+                       style="{{ ($activeKlasifikasi ?? null) === 'Kepaniteraan' ? 'background-color: #ecfdf5;' : '' }} transition: all 0.15s ease;">
+                        <div class="card-body py-2 px-3 d-flex align-items-center justify-content-between">
+                            <div>
+                                <div class="text-xs font-weight-bold text-success text-uppercase">
+                                    <i class="fas fa-balance-scale mr-1"></i> Kepaniteraan
+                                </div>
+                                <div class="small text-muted">Delegasi Panitera Muda &amp; Perkara</div>
+                            </div>
+                            <span class="badge badge-success badge-pill px-3 py-2" style="font-size: 0.85rem;">
+                                {{ $stats['kepaniteraan'] ?? 0 }}
+                            </span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Data Table Card -->
     <div class="card shadow mb-4">
          <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
             <h6 class="m-0 font-weight-bold text-primary">
                 <i class="fas fa-table mr-1"></i> Daftar Tugas
+                @if(!empty($activeKlasifikasi))
+                    <span class="badge {{ $activeKlasifikasi === 'Kepaniteraan' ? 'badge-success' : 'badge-primary' }} ml-2 px-2 py-1">
+                        Klasifikasi: {{ $activeKlasifikasi }}
+                    </span>
+                @endif
             </h6>
             <div>
                 <button type="button" class="btn btn-sm btn-success" data-toggle="modal" data-target="#modalExportExcelTugas">
@@ -124,6 +209,7 @@
                         <tr class="text-center">
                             <th width="4%">No</th>
                             <th>Judul Tugas</th>
+                            <th>Klasifikasi</th>
                             @if($isAdmin)
                                 <th>Petugas Pelaksana</th>
                             @elseif($isKasubbag ?? false)
@@ -146,6 +232,17 @@
                                 <td class="align-middle">
                                     <div class="font-weight-bold text-gray-900">{{ $t->judul }}</div>
                                     <small class="text-muted">{{ Str::limit($t->deskripsi, 60) }}</small>
+                                </td>
+                                <td class="text-center align-middle">
+                                    @if(($t->klasifikasi ?? 'Kesekretariatan') === 'Kepaniteraan')
+                                        <span class="badge badge-success px-2 py-1">
+                                            <i class="fas fa-balance-scale mr-1"></i> Kepaniteraan
+                                        </span>
+                                    @else
+                                        <span class="badge badge-primary px-2 py-1">
+                                            <i class="fas fa-building mr-1"></i> Kesekretariatan
+                                        </span>
+                                    @endif
                                 </td>
 
                                 @if($isAdmin)
@@ -289,15 +386,20 @@
                                                                 <strong>Diterima dari:</strong> {{ $t->admin->name ?? 'Admin' }}
                                                             </div>
                                                             <div class="form-group">
-                                                                <label class="font-weight-bold small text-gray-800">Pilih Petugas Pelaksana <span class="text-danger">*</span></label>
-                                                                <select class="form-control" name="petugas_id" required>
-                                                                    <option value="">-- Pilih Petugas --</option>
+                                                                <label class="font-weight-bold small text-gray-800">Pilih Petugas Pelaksana (Bisa Lebih dari 1 Orang) <span class="text-danger">*</span></label>
+                                                                <div class="border rounded p-2 bg-light" style="max-height: 190px; overflow-y: auto;">
                                                                     @foreach($petugasList as $p)
                                                                         @if($p->jabatan === 'Petugas')
-                                                                            <option value="{{ $p->id }}">{{ $p->name }} (NIP: {{ $p->nip }}) - [{{ $p->status }}]</option>
+                                                                            <div class="custom-control custom-checkbox mb-1">
+                                                                                <input type="checkbox" class="custom-control-input" id="delegasi_idx_{{ $t->id }}_p_{{ $p->id }}" name="petugas_id[]" value="{{ $p->id }}">
+                                                                                <label class="custom-control-label small text-gray-900" for="delegasi_idx_{{ $t->id }}_p_{{ $p->id }}">
+                                                                                    <strong>{{ $p->name }}</strong> (NIP: {{ $p->nip }}) — <span class="badge {{ $p->status === 'Belum Ditugaskan' ? 'badge-secondary' : 'badge-success' }}">{{ $p->status }}</span>
+                                                                                </label>
+                                                                            </div>
                                                                         @endif
                                                                     @endforeach
-                                                                </select>
+                                                                </div>
+                                                                <small class="text-muted">Centang 1 atau lebih Petugas yang akan menerima delegasi tugas ini.</small>
                                                             </div>
                                                             <div class="form-group">
                                                                 <label class="font-weight-bold small text-gray-800">Batas Selesai / Deadline</label>
@@ -366,7 +468,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center py-4 text-muted">
+                                <td colspan="8" class="text-center py-4 text-muted">
                                     <i class="fas fa-inbox fa-3x mb-2 text-gray-300 d-block"></i>
                                     Belum ada data tugas yang tersedia.
                                 </td>
@@ -405,6 +507,14 @@
                                 </div>
                             </div>
                             <small class="form-text text-muted mt-1">Kosongkan periode jika ingin mengekspor seluruh rentang waktu.</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-bold small text-gray-800">Filter Klasifikasi Tugas:</label>
+                            <select class="form-control form-control-sm" name="klasifikasi">
+                                <option value="">Semua Klasifikasi (Kesekretariatan &amp; Kepaniteraan)</option>
+                                <option value="Kesekretariatan" {{ ($activeKlasifikasi ?? null) === 'Kesekretariatan' ? 'selected' : '' }}>Kesekretariatan</option>
+                                <option value="Kepaniteraan" {{ ($activeKlasifikasi ?? null) === 'Kepaniteraan' ? 'selected' : '' }}>Kepaniteraan</option>
+                            </select>
                         </div>
                         <div class="row">
                             <div class="col-{{ ($canDelegate ?? $isAdmin) ? '6' : '12' }}">
@@ -473,6 +583,14 @@
                                 </div>
                             </div>
                             <small class="form-text text-muted mt-1">Kosongkan periode jika ingin mengekspor seluruh rentang waktu.</small>
+                        </div>
+                        <div class="form-group">
+                            <label class="font-weight-bold small text-gray-800">Filter Klasifikasi Tugas:</label>
+                            <select class="form-control form-control-sm" name="klasifikasi">
+                                <option value="">Semua Klasifikasi (Kesekretariatan &amp; Kepaniteraan)</option>
+                                <option value="Kesekretariatan" {{ ($activeKlasifikasi ?? null) === 'Kesekretariatan' ? 'selected' : '' }}>Kesekretariatan</option>
+                                <option value="Kepaniteraan" {{ ($activeKlasifikasi ?? null) === 'Kepaniteraan' ? 'selected' : '' }}>Kepaniteraan</option>
+                            </select>
                         </div>
                         <div class="row">
                             <div class="col-{{ ($canDelegate ?? $isAdmin) ? '6' : '12' }}">

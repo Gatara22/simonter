@@ -75,6 +75,16 @@
                             <td class="font-weight-bold text-gray-900">: {{ $tugas->judul }}</td>
                         </tr>
                         <tr>
+                            <th class="text-muted">Klasifikasi Tugas</th>
+                            <td>:
+                                @if(($tugas->klasifikasi ?? 'Kesekretariatan') === 'Kepaniteraan')
+                                    <span class="badge badge-success px-2 py-1"><i class="fas fa-balance-scale mr-1"></i> Kepaniteraan</span>
+                                @else
+                                    <span class="badge badge-primary px-2 py-1"><i class="fas fa-building mr-1"></i> Kesekretariatan</span>
+                                @endif
+                            </td>
+                        </tr>
+                        <tr>
                             <th class="text-muted">Pemberi Tugas</th>
                             <td>: {{ $tugas->admin->name ?? 'Admin' }} <span class="badge badge-light border ml-1">{{ $tugas->admin->jabatan ?? 'Admin' }}</span></td>
                         </tr>
@@ -376,15 +386,20 @@
                                 <strong>Diterima dari:</strong> {{ $tugas->admin->name ?? 'Admin' }}
                             </div>
                             <div class="form-group">
-                                <label class="font-weight-bold small text-gray-800">Pilih Petugas Pelaksana <span class="text-danger">*</span></label>
-                                <select class="form-control" name="petugas_id" required>
-                                    <option value="">-- Pilih Petugas --</option>
+                                <label class="font-weight-bold small text-gray-800">Pilih Petugas Pelaksana (Bisa Lebih dari 1 Orang) <span class="text-danger">*</span></label>
+                                <div class="border rounded p-2 bg-light" style="max-height: 190px; overflow-y: auto;">
                                     @foreach($petugasList ?? [] as $p)
                                         @if($p->jabatan === 'Petugas')
-                                            <option value="{{ $p->id }}">{{ $p->name }} (NIP: {{ $p->nip }}) - [{{ $p->status }}]</option>
+                                            <div class="custom-control custom-checkbox mb-1">
+                                                <input type="checkbox" class="custom-control-input" id="delegasi_show_p_{{ $p->id }}" name="petugas_id[]" value="{{ $p->id }}">
+                                                <label class="custom-control-label small text-gray-900" for="delegasi_show_p_{{ $p->id }}">
+                                                    <strong>{{ $p->name }}</strong> (NIP: {{ $p->nip }}) — <span class="badge {{ $p->status === 'Belum Ditugaskan' ? 'badge-secondary' : 'badge-success' }}">{{ $p->status }}</span>
+                                                </label>
+                                            </div>
                                         @endif
                                     @endforeach
-                                </select>
+                                </div>
+                                <small class="text-muted">Centang 1 atau lebih Petugas yang akan menerima delegasi tugas ini.</small>
                             </div>
                             <div class="form-group">
                                 <label class="font-weight-bold small text-gray-800">Batas Selesai / Deadline</label>

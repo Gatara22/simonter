@@ -26,42 +26,35 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
         $canDelegate = $isAdmin || $isKasubbag;
 
-        if ($isAdmin) {
+        $activeKlasifikasi = $request->query('klasifikasi');
+        if (! in_array($activeKlasifikasi, ['Kesekretariatan', 'Kepaniteraan'], true)) {
+            $activeKlasifikasi = null;
+        }
+
+        if ($isAdmin || $isKasubbag) {
             $tugasQuery = Tugas::with(['admin', 'petugas'])->latest();
 
             $totalTugas = Tugas::count();
+            $totalKesekretariatan = Tugas::where('klasifikasi', 'Kesekretariatan')->count();
+            $totalKepaniteraan = Tugas::where('klasifikasi', 'Kepaniteraan')->count();
             $totalDidelegasikan = Tugas::whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])->count();
             $totalMenungguKonfirmasi = Tugas::where('status', 'Menunggu Konfirmasi')->count();
             $totalSelesai = Tugas::where('status', 'Selesai')->count();
-        } elseif ($isKasubbag) {
-            $baseScope = function ($q) use ($currentUser) {
-                $q->where('petugas_id', $currentUser->id)
-                    ->orWhere('admin_id', $currentUser->id);
-            };
-
-            $tugasQuery = Tugas::with(['admin', 'petugas'])
-                ->where($baseScope)
-                ->latest();
-
-            $totalTugas = Tugas::where($baseScope)->count();
-            $totalDidelegasikan = Tugas::where($baseScope)
-                ->whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])
-                ->count();
-            $totalMenungguKonfirmasi = Tugas::where($baseScope)
-                ->where('status', 'Menunggu Konfirmasi')
-                ->count();
-            $totalSelesai = Tugas::where($baseScope)
-                ->where('status', 'Selesai')
-                ->count();
         } else {
             $tugasQuery = Tugas::with(['admin', 'petugas'])
                 ->where('petugas_id', $currentUser->id)
                 ->latest();
 
             $totalTugas = Tugas::where('petugas_id', $currentUser->id)->count();
+            $totalKesekretariatan = Tugas::where('petugas_id', $currentUser->id)
+                ->where('klasifikasi', 'Kesekretariatan')
+                ->count();
+            $totalKepaniteraan = Tugas::where('petugas_id', $currentUser->id)
+                ->where('klasifikasi', 'Kepaniteraan')
+                ->count();
             $totalDidelegasikan = Tugas::where('petugas_id', $currentUser->id)
                 ->whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])
                 ->count();
@@ -73,6 +66,11 @@ class TugasController extends Controller
                 ->count();
         }
 
+        // Optional klasifikasi filter
+        if ($activeKlasifikasi !== null) {
+            $tugasQuery->where('klasifikasi', $activeKlasifikasi);
+        }
+
         // Optional status filter
         if ($request->filled('status')) {
             $tugasQuery->where('status', $request->query('status'));
@@ -82,12 +80,12 @@ class TugasController extends Controller
         if ($isAdmin) {
             $title = 'Data Tugas (Delegasi Admin)';
         } elseif ($isKasubbag) {
-            $title = 'Data Tugas & Delegasi (Kepala Sub Bagian)';
+            $title = 'Data Tugas & Delegasi ('.$currentUser->jabatan.')';
         }
 
         $petugasList = collect();
         if ($isAdmin) {
-            $petugasList = User::whereIn('jabatan', ['Kepala Sub Bagian', 'Petugas'])->orderBy('name')->get();
+            $petugasList = User::whereIn('jabatan', ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'])->orderBy('name')->get();
         } elseif ($isKasubbag) {
             $petugasList = User::where('jabatan', 'Petugas')->orderBy('name')->get();
         }
@@ -102,8 +100,11 @@ class TugasController extends Controller
             'isKasubbag' => $isKasubbag,
             'canDelegate' => $canDelegate,
             'petugasList' => $petugasList,
+            'activeKlasifikasi' => $activeKlasifikasi,
             'stats' => [
                 'total' => $totalTugas,
+                'kesekretariatan' => $totalKesekretariatan,
+                'kepaniteraan' => $totalKepaniteraan,
                 'didelegasikan' => $totalDidelegasikan,
                 'menunggu' => $totalMenungguKonfirmasi,
                 'selesai' => $totalSelesai,
@@ -121,14 +122,14 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         if (! $isAdmin && ! $isKasubbag) {
-            return redirect()->route('tugas.index')->with('error', 'Hanya Admin dan Kepala Sub Bagian yang dapat mendelegasikan tugas.');
+            return redirect()->route('tugas.index')->with('error', 'Hanya Admin, Kepala Sub Bagian, dan Panitera Muda yang dapat mendelegasikan tugas.');
         }
 
         $petugasList = $isAdmin
-            ? User::whereIn('jabatan', ['Kepala Sub Bagian', 'Petugas'])->orderBy('name')->get()
+            ? User::whereIn('jabatan', ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'])->orderBy('name')->get()
             : User::where('jabatan', 'Petugas')->orderBy('name')->get();
 
         $sumberTugas = null;
@@ -153,26 +154,49 @@ class TugasController extends Controller
     }
 
     /**
-     * Store a newly delegated task.
+     * Store a newly delegated task (supports single or multiple recipients).
      */
     public function store(Request $request): RedirectResponse
     {
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         if (! $isAdmin && ! $isKasubbag) {
-            return redirect()->route('tugas.index')->with('error', 'Hanya Admin dan Kepala Sub Bagian yang dapat mendelegasikan tugas.');
+            return redirect()->route('tugas.index')->with('error', 'Hanya Admin, Kepala Sub Bagian, dan Panitera Muda yang dapat mendelegasikan tugas.');
         }
 
-        $allowedRecipientRoles = $isAdmin ? ['Kepala Sub Bagian', 'Petugas'] : ['Petugas'];
+        $allowedRecipientRoles = $isAdmin ? ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'] : ['Petugas'];
+        $allowedRecipientIds = User::whereIn('jabatan', $allowedRecipientRoles)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        // Normalize single petugas_id into array for backwards compatibility while supporting multi-select array
+        $rawPetugasInput = $request->input('petugas_id');
+        if ($rawPetugasInput !== null && ! is_array($rawPetugasInput)) {
+            $request->merge([
+                'petugas_id' => $rawPetugasInput !== '' ? [$rawPetugasInput] : [],
+            ]);
+        }
 
         $validated = $request->validate([
             'judul' => ['required', 'string', 'max:255'],
+            'klasifikasi' => ['nullable', 'in:Kesekretariatan,Kepaniteraan'],
             'petugas_id' => [
                 'required',
-                Rule::exists('users', 'id')->whereIn('jabatan', $allowedRecipientRoles),
+                'array',
+                'min:1',
+                function (string $attribute, mixed $value, \Closure $fail) use ($allowedRecipientIds): void {
+                    if (! is_array($value)) {
+                        return;
+                    }
+                    foreach ($value as $recipientId) {
+                        if (! in_array((int) $recipientId, $allowedRecipientIds, true)) {
+                            $fail('Petugas yang dipilih tidak valid atau tidak sesuai wewenang.');
+
+                            return;
+                        }
+                    }
+                },
             ],
             'deskripsi' => ['required', 'string'],
             'tanggal_mulai' => ['required', 'date'],
@@ -181,8 +205,10 @@ class TugasController extends Controller
             'sumber_tugas_id' => ['nullable', 'exists:tugas,id'],
         ], [
             'judul.required' => 'Judul tugas wajib diisi.',
-            'petugas_id.required' => 'Pilih petugas pelaksana tugas.',
-            'petugas_id.exists' => 'Petugas yang dipilih tidak valid atau tidak sesuai wewenang.',
+            'klasifikasi.in' => 'Klasifikasi tugas tidak valid (pilih Kesekretariatan atau Kepaniteraan).',
+            'petugas_id.required' => 'Pilih minimal 1 penerima / petugas pelaksana tugas.',
+            'petugas_id.array' => 'Format pilihan penerima tugas tidak valid.',
+            'petugas_id.min' => 'Pilih minimal 1 penerima / petugas pelaksana tugas.',
             'deskripsi.required' => 'Deskripsi tugas dan instruksi wajib diisi.',
             'tanggal_mulai.required' => 'Tanggal mulai tugas wajib diisi.',
             'tanggal_selesai.required' => 'Tanggal selesai / deadline wajib diisi.',
@@ -191,112 +217,194 @@ class TugasController extends Controller
             'file_tugas.max' => 'Ukuran file lampiran tugas maksimal 10 MB.',
         ]);
 
+        $fileTugasPath = null;
+        $fileTugasName = null;
+
         if ($request->hasFile('file_tugas')) {
             $file = $request->file('file_tugas');
-            $path = $this->storeUploadedFile($file, 'tugas');
-            $validated['file_tugas'] = $path;
-            $validated['file_tugas_name'] = $file->getClientOriginalName();
+            $fileTugasPath = $this->storeUploadedFile($file, 'tugas');
+            $fileTugasName = $file->getClientOriginalName();
         } elseif ($request->filled('sumber_tugas_id')) {
             $sumberTugas = Tugas::find($request->input('sumber_tugas_id'));
             if ($sumberTugas && $sumberTugas->file_tugas) {
-                $validated['file_tugas'] = $sumberTugas->file_tugas;
-                $validated['file_tugas_name'] = $sumberTugas->file_tugas_name;
+                $fileTugasPath = $sumberTugas->file_tugas;
+                $fileTugasName = $sumberTugas->file_tugas_name;
             }
         }
 
-        unset($validated['sumber_tugas_id']);
+        $recipientIds = array_values(array_unique(array_map('intval', $validated['petugas_id'])));
+        $targetUsers = User::whereIn('id', $recipientIds)->get()->keyBy('id');
+        $createdCount = 0;
 
-        $validated['admin_id'] = $currentUser->id;
-        $validated['status'] = 'Didelegasikan';
+        foreach ($recipientIds as $recipientId) {
+            $targetUser = $targetUsers->get($recipientId);
 
-        $tugas = Tugas::create($validated);
+            if ($currentUser->jabatan === 'Kepala Sub Bagian') {
+                $taskKlasifikasi = 'Kesekretariatan';
+            } elseif ($currentUser->jabatan === 'Panitera Muda') {
+                $taskKlasifikasi = 'Kepaniteraan';
+            } else {
+                if (! empty($validated['klasifikasi'])) {
+                    $taskKlasifikasi = $validated['klasifikasi'];
+                } elseif ($targetUser?->jabatan === 'Panitera Muda') {
+                    $taskKlasifikasi = 'Kepaniteraan';
+                } else {
+                    $taskKlasifikasi = 'Kesekretariatan';
+                }
+            }
 
-        $targetUser = User::find($validated['petugas_id']);
-        $tugas->recordLog(
-            action: 'delegasi',
-            status: 'Didelegasikan',
-            keterangan: 'Tugas dibuat dan didelegasikan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetUser?->name ?? 'Pelaksana').' ('.($targetUser?->jabatan ?? 'Petugas').').',
-            catatan: null,
-            userId: $currentUser->id,
-        );
+            $tugasData = [
+                'judul' => $validated['judul'],
+                'klasifikasi' => $taskKlasifikasi,
+                'petugas_id' => $recipientId,
+                'admin_id' => $currentUser->id,
+                'deskripsi' => $validated['deskripsi'],
+                'tanggal_mulai' => $validated['tanggal_mulai'],
+                'tanggal_selesai' => $validated['tanggal_selesai'],
+                'status' => 'Didelegasikan',
+                'file_tugas' => $fileTugasPath,
+                'file_tugas_name' => $fileTugasName,
+            ];
 
-        // Update officer's status to 'Sedang Bertugas'
-        User::where('id', $validated['petugas_id'])->update(['status' => 'Sedang Bertugas']);
+            $tugas = Tugas::create($tugasData);
+            $createdCount++;
 
-        if ($targetUser && $targetUser->id !== $currentUser->id) {
-            $targetUser->notify(new TugasNotification(
-                tugas: $tugas,
-                sender: $currentUser,
-                type: 'tugas_baru',
-                catatan: $tugas->deskripsi,
-            ));
+            $tugas->recordLog(
+                action: 'delegasi',
+                status: 'Didelegasikan',
+                keterangan: 'Tugas ('.$taskKlasifikasi.') dibuat dan didelegasikan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetUser?->name ?? 'Pelaksana').' ('.($targetUser?->jabatan ?? 'Petugas').').',
+                catatan: null,
+                userId: $currentUser->id,
+            );
+
+            if ($targetUser && $targetUser->id !== $currentUser->id) {
+                $targetUser->notify(new TugasNotification(
+                    tugas: $tugas,
+                    sender: $currentUser,
+                    type: 'tugas_baru',
+                    catatan: $tugas->deskripsi,
+                ));
+            }
         }
 
-        return redirect()->route('tugas.index')->with('success', 'Tugas berhasil didelegasikan kepada petugas.');
+        // Update all selected officers' status to 'Sedang Bertugas'
+        User::whereIn('id', $recipientIds)->update(['status' => 'Sedang Bertugas']);
+
+        $successMessage = $createdCount > 1
+            ? "Tugas berhasil didelegasikan kepada {$createdCount} petugas pelaksana."
+            : 'Tugas berhasil didelegasikan kepada petugas.';
+
+        return redirect()->route('tugas.index')->with('success', $successMessage);
     }
 
     /**
-     * Delegate a task received by Kepala Sub Bagian (or Admin) to a Petugas.
+     * Delegate a task received by Kepala Sub Bagian (or Admin) to one or multiple Petugas.
      */
     public function delegasikanKePetugas(Request $request, Tugas $tugas): RedirectResponse
     {
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         if (! $isAdmin && (! $isKasubbag || $tugas->petugas_id !== $currentUser->id)) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk mendelegasikan tugas ini.');
         }
 
+        // Normalize single petugas_id into array for backwards compatibility while supporting multi-select array
+        $rawPetugasInput = $request->input('petugas_id');
+        if ($rawPetugasInput !== null && ! is_array($rawPetugasInput)) {
+            $request->merge([
+                'petugas_id' => $rawPetugasInput !== '' ? [$rawPetugasInput] : [],
+            ]);
+        }
+
         $validated = $request->validate([
-            'petugas_id' => [
+            'petugas_id' => ['required', 'array', 'min:1'],
+            'petugas_id.*' => [
                 'required',
+                'distinct',
                 Rule::exists('users', 'id')->where('jabatan', 'Petugas'),
             ],
             'catatan_delegasi' => ['nullable', 'string'],
             'tanggal_selesai' => ['nullable', 'date', 'after_or_equal:'.$tugas->tanggal_mulai->format('Y-m-d')],
         ], [
-            'petugas_id.required' => 'Pilih Petugas yang akan menerima delegasi tugas.',
-            'petugas_id.exists' => 'Petugas yang dipilih tidak valid (harus jabatan Petugas).',
+            'petugas_id.required' => 'Pilih minimal 1 Petugas yang akan menerima delegasi tugas.',
+            'petugas_id.array' => 'Format pilihan Petugas tidak valid.',
+            'petugas_id.min' => 'Pilih minimal 1 Petugas yang akan menerima delegasi tugas.',
+            'petugas_id.*.required' => 'Pilih Petugas yang akan menerima delegasi tugas.',
+            'petugas_id.*.exists' => 'Petugas yang dipilih tidak valid (harus jabatan Petugas).',
             'tanggal_selesai.after_or_equal' => 'Batas selesai tidak boleh sebelum tanggal mulai tugas.',
         ]);
 
         $previousAssigneeId = $tugas->petugas_id;
+        $recipientIds = array_values(array_unique(array_map('intval', $validated['petugas_id'])));
+        $targetUsers = User::whereIn('id', $recipientIds)->get()->keyBy('id');
 
+        $updatedDeskripsi = $tugas->deskripsi;
         if (! empty($validated['catatan_delegasi'])) {
-            $tugas->deskripsi = $tugas->deskripsi."\n\n[Instruksi Tambahan ".$currentUser->name."]:\n".$validated['catatan_delegasi'];
+            $updatedDeskripsi = $tugas->deskripsi."\n\n[Instruksi Tambahan ".$currentUser->name."]:\n".$validated['catatan_delegasi'];
         }
 
-        if (! empty($validated['tanggal_selesai'])) {
-            $tugas->tanggal_selesai = $validated['tanggal_selesai'];
+        $updatedTanggalSelesai = ! empty($validated['tanggal_selesai'])
+            ? $validated['tanggal_selesai']
+            : $tugas->tanggal_selesai;
+
+        if ($currentUser->jabatan === 'Kepala Sub Bagian') {
+            $delegatedKlasifikasi = 'Kesekretariatan';
+        } elseif ($currentUser->jabatan === 'Panitera Muda') {
+            $delegatedKlasifikasi = 'Kepaniteraan';
+        } else {
+            $delegatedKlasifikasi = $tugas->klasifikasi ?: 'Kesekretariatan';
         }
 
-        $tugas->admin_id = $currentUser->id;
-        $tugas->petugas_id = (int) $validated['petugas_id'];
-        $tugas->status = 'Didelegasikan';
-        $tugas->save();
+        foreach ($recipientIds as $index => $recipientId) {
+            if ($index === 0) {
+                $tugas->klasifikasi = $delegatedKlasifikasi;
+                $tugas->deskripsi = $updatedDeskripsi;
+                $tugas->tanggal_selesai = $updatedTanggalSelesai;
+                $tugas->admin_id = $currentUser->id;
+                $tugas->petugas_id = $recipientId;
+                $tugas->status = 'Didelegasikan';
+                $tugas->save();
 
-        $targetPetugas = User::find($tugas->petugas_id);
-        $tugas->recordLog(
-            action: 'delegasi',
-            status: 'Didelegasikan',
-            keterangan: 'Tugas didelegasikan lanjutan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetPetugas?->name ?? 'Petugas').' (Petugas).',
-            catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : null,
-            userId: $currentUser->id,
-        );
+                $delegatedTask = $tugas;
+            } else {
+                $delegatedTask = Tugas::create([
+                    'judul' => $tugas->judul,
+                    'klasifikasi' => $delegatedKlasifikasi,
+                    'deskripsi' => $updatedDeskripsi,
+                    'admin_id' => $currentUser->id,
+                    'petugas_id' => $recipientId,
+                    'tanggal_mulai' => $tugas->tanggal_mulai,
+                    'tanggal_selesai' => $updatedTanggalSelesai,
+                    'status' => 'Didelegasikan',
+                    'file_tugas' => $tugas->file_tugas,
+                    'file_tugas_name' => $tugas->file_tugas_name,
+                ]);
+            }
 
-        // Update new Petugas status to 'Sedang Bertugas'
-        User::where('id', $tugas->petugas_id)->update(['status' => 'Sedang Bertugas']);
+            $targetPetugas = $targetUsers->get($recipientId);
+            $delegatedTask->recordLog(
+                action: 'delegasi',
+                status: 'Didelegasikan',
+                keterangan: 'Tugas ('.$delegatedKlasifikasi.') didelegasikan lanjutan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetPetugas?->name ?? 'Petugas').' (Petugas).',
+                catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : null,
+                userId: $currentUser->id,
+            );
 
-        if ($targetPetugas && $targetPetugas->id !== $currentUser->id) {
-            $targetPetugas->notify(new TugasNotification(
-                tugas: $tugas,
-                sender: $currentUser,
-                type: 'delegasi_lanjutan',
-                catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : $tugas->deskripsi,
-            ));
+            if ($targetPetugas && $targetPetugas->id !== $currentUser->id) {
+                $targetPetugas->notify(new TugasNotification(
+                    tugas: $delegatedTask,
+                    sender: $currentUser,
+                    type: 'delegasi_lanjutan',
+                    catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : $delegatedTask->deskripsi,
+                ));
+            }
         }
+
+        // Update all selected Petugas status to 'Sedang Bertugas'
+        User::whereIn('id', $recipientIds)->update(['status' => 'Sedang Bertugas']);
 
         // Update previous assignee (e.g. Kepala Sub Bagian) status if they have no other active assigned tasks
         $activeCount = Tugas::where('petugas_id', $previousAssigneeId)
@@ -307,7 +415,12 @@ class TugasController extends Controller
             User::where('id', $previousAssigneeId)->update(['status' => 'Belum Ditugaskan']);
         }
 
-        return redirect()->route('tugas.show', $tugas->id)->with('success', 'Tugas berhasil didelegasikan kepada Petugas.');
+        $count = count($recipientIds);
+        $message = $count > 1
+            ? "Tugas berhasil didelegasikan kepada {$count} Petugas."
+            : 'Tugas berhasil didelegasikan kepada Petugas.';
+
+        return redirect()->route('tugas.show', $tugas->id)->with('success', $message);
     }
 
     /**
@@ -318,11 +431,11 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
         $canManageTask = $isAdmin || ($isKasubbag && $tugas->admin_id === $currentUser->id);
 
-        // Non-admin can only view tasks assigned to them or delegated by them
-        if (! $isAdmin && $tugas->petugas_id !== $currentUser->id && $tugas->admin_id !== $currentUser->id) {
+        // Petugas can only view tasks assigned to them or delegated by them
+        if (! $isAdmin && ! $isKasubbag && $tugas->petugas_id !== $currentUser->id && $tugas->admin_id !== $currentUser->id) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki akses ke tugas ini.');
         }
 
@@ -372,14 +485,14 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         if (! $isAdmin && (! $isKasubbag || ($tugas->admin_id !== $currentUser->id && $tugas->petugas_id !== $currentUser->id))) {
-            return redirect()->route('tugas.index')->with('error', 'Hanya Admin dan Kepala Sub Bagian terkait yang dapat mengedit tugas.');
+            return redirect()->route('tugas.index')->with('error', 'Hanya Admin, Kepala Sub Bagian, dan Panitera Muda terkait yang dapat mengedit tugas.');
         }
 
         $petugasList = $isAdmin
-            ? User::whereIn('jabatan', ['Kepala Sub Bagian', 'Petugas'])->orderBy('name')->get()
+            ? User::whereIn('jabatan', ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'])->orderBy('name')->get()
             : User::where('jabatan', 'Petugas')->orderBy('name')->get();
 
         $data = [
@@ -403,16 +516,17 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         if (! $isAdmin && (! $isKasubbag || ($tugas->admin_id !== $currentUser->id && $tugas->petugas_id !== $currentUser->id))) {
-            return redirect()->route('tugas.index')->with('error', 'Hanya Admin dan Kepala Sub Bagian terkait yang dapat mengedit tugas.');
+            return redirect()->route('tugas.index')->with('error', 'Hanya Admin, Kepala Sub Bagian, dan Panitera Muda terkait yang dapat mengedit tugas.');
         }
 
-        $allowedRecipientRoles = $isAdmin ? ['Kepala Sub Bagian', 'Petugas'] : ['Petugas'];
+        $allowedRecipientRoles = $isAdmin ? ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'] : ['Petugas'];
 
         $validated = $request->validate([
             'judul' => ['required', 'string', 'max:255'],
+            'klasifikasi' => ['nullable', 'in:Kesekretariatan,Kepaniteraan'],
             'petugas_id' => [
                 'required',
                 Rule::exists('users', 'id')->whereIn('jabatan', $allowedRecipientRoles),
@@ -423,6 +537,7 @@ class TugasController extends Controller
             'file_tugas' => ['nullable', 'file', 'max:10240', 'mimes:pdf,doc,docx,xls,xlsx,zip,rar,jpg,jpeg,png'],
         ], [
             'judul.required' => 'Judul tugas wajib diisi.',
+            'klasifikasi.in' => 'Klasifikasi tugas tidak valid (pilih Kesekretariatan atau Kepaniteraan).',
             'petugas_id.required' => 'Pilih petugas pelaksana tugas.',
             'petugas_id.exists' => 'Petugas yang dipilih tidak terdaftar atau tidak sesuai wewenang.',
             'deskripsi.required' => 'Deskripsi tugas dan instruksi wajib diisi.',
@@ -432,6 +547,14 @@ class TugasController extends Controller
             'file_tugas.file' => 'Berkas lampiran tugas harus berupa file yang valid.',
             'file_tugas.max' => 'Ukuran file lampiran tugas maksimal 10 MB.',
         ]);
+
+        if ($currentUser->jabatan === 'Kepala Sub Bagian') {
+            $validated['klasifikasi'] = 'Kesekretariatan';
+        } elseif ($currentUser->jabatan === 'Panitera Muda') {
+            $validated['klasifikasi'] = 'Kepaniteraan';
+        } elseif (empty($validated['klasifikasi'])) {
+            $validated['klasifikasi'] = $tugas->klasifikasi ?: 'Kesekretariatan';
+        }
 
         if ($request->hasFile('file_tugas')) {
             if ($tugas->file_tugas) {
@@ -492,7 +615,7 @@ class TugasController extends Controller
     {
         /** @var User $currentUser */
         $currentUser = Auth::user();
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         if ($currentUser->jabatan !== 'Admin' && $tugas->petugas_id !== $currentUser->id) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk menindaklanjuti tugas ini.');
@@ -599,7 +722,7 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isDelegatorKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian' && $tugas->admin_id === $currentUser->id;
+        $isDelegatorKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true) && $tugas->admin_id === $currentUser->id;
 
         if (! $isAdmin && ! $isDelegatorKasubbag) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk memverifikasi tugas ini.');
@@ -673,7 +796,7 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isDelegatorKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian' && $tugas->admin_id === $currentUser->id;
+        $isDelegatorKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true) && $tugas->admin_id === $currentUser->id;
 
         if (! $isAdmin && ! $isDelegatorKasubbag) {
             return redirect()->route('tugas.index')->with('error', 'Hanya Admin yang berwenang membuka kembali tugas ini.');
@@ -732,7 +855,7 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isDelegatorKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian' && $tugas->admin_id === $currentUser->id;
+        $isDelegatorKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true) && $tugas->admin_id === $currentUser->id;
 
         if (! $isAdmin && ! $isDelegatorKasubbag) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk menghapus tugas ini.');
@@ -769,7 +892,7 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         $query = Tugas::with(['admin', 'petugas']);
 
@@ -789,6 +912,9 @@ class TugasController extends Controller
             $query->where('petugas_id', $currentUser->id);
         }
 
+        if ($request->filled('klasifikasi')) {
+            $query->where('klasifikasi', $request->query('klasifikasi'));
+        }
         if ($request->filled('tanggal_awal')) {
             $query->whereDate('tanggal_mulai', '>=', $request->query('tanggal_awal'));
         }
@@ -816,6 +942,7 @@ class TugasController extends Controller
             'tugas' => $tugas,
             'periodeString' => $periodeString,
             'filterStatus' => $request->status ?? 'Semua Status',
+            'filterKlasifikasi' => $request->klasifikasi ?: 'Semua Klasifikasi',
         ])->render();
 
         return response($content, 200, [
@@ -834,7 +961,7 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         $query = Tugas::with(['admin', 'petugas']);
 
@@ -860,6 +987,9 @@ class TugasController extends Controller
             $filterPetugas = $currentUser->name;
         }
 
+        if ($request->filled('klasifikasi')) {
+            $query->where('klasifikasi', $request->query('klasifikasi'));
+        }
         if ($request->filled('tanggal_awal')) {
             $query->whereDate('tanggal_mulai', '>=', $request->query('tanggal_awal'));
         }
@@ -886,6 +1016,7 @@ class TugasController extends Controller
             'tugas' => $tugas,
             'periodeString' => $periodeString,
             'filterStatus' => $request->status ?? 'Semua Status',
+            'filterKlasifikasi' => $request->klasifikasi ?: 'Semua Klasifikasi',
             'filterPetugas' => $filterPetugas,
         ])->setPaper('a4', 'landscape');
 

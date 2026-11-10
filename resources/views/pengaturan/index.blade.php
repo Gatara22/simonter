@@ -81,6 +81,10 @@
                                 <span class="badge badge-primary px-3 py-1 font-weight-bold">
                                     <i class="fas fa-user-cog mr-1"></i> Kepala Sub Bagian
                                 </span>
+                            @elseif($user->jabatan === 'Panitera Muda')
+                                <span class="badge badge-success px-3 py-1 font-weight-bold">
+                                    <i class="fas fa-balance-scale mr-1"></i> Panitera Muda
+                                </span>
                             @else
                                 <span class="badge badge-info px-3 py-1 font-weight-bold">
                                     <i class="fas fa-user-tie mr-1"></i> Petugas

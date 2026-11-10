@@ -732,4 +732,191 @@ class TugasDelegationTest extends TestCase
             ->assertJsonPath('unread_count', 0);
         $this->assertEquals(0, $admin->unreadNotifications()->count());
     }
+
+    /**
+     * Test Admin can delegate a new task to multiple recipients (Kasubbag and Petugas) simultaneously.
+     */
+    public function test_admin_can_delegate_new_task_to_multiple_recipients(): void
+    {
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['name' => 'Admin Multi', 'jabatan' => 'Admin']);
+        $kasubbag = User::factory()->create([
+            'name' => 'Kasubbag Perencanaan',
+            'jabatan' => 'Kepala Sub Bagian',
+            'status' => 'Belum Ditugaskan',
+        ]);
+        $petugas1 = User::factory()->create([
+            'name' => 'Petugas Satu',
+            'jabatan' => 'Petugas',
+            'status' => 'Belum Ditugaskan',
+        ]);
+        $petugas2 = User::factory()->create([
+            'name' => 'Petugas Dua',
+            'jabatan' => 'Petugas',
+            'status' => 'Belum Ditugaskan',
+        ]);
+
+        $attachment = UploadedFile::fake()->create('instruksi_bersama.pdf', 1200);
+
+        $response = $this->actingAs($admin)->post(route('tugas.store'), [
+            'judul' => 'Persiapan Zona Integritas WBK/WBBM',
+            'petugas_id' => [$kasubbag->id, $petugas1->id, $petugas2->id],
+            'deskripsi' => 'Lengkapi dokumen eviden pembangunan Zona Integritas sesuai area masing-masing.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(7)->format('Y-m-d'),
+            'file_tugas' => $attachment,
+        ]);
+
+        $response->assertRedirect(route('tugas.index'));
+        $response->assertSessionHas('success');
+
+        $createdTasks = Tugas::where('judul', 'Persiapan Zona Integritas WBK/WBBM')->get();
+        $this->assertCount(3, $createdTasks);
+
+        foreach ([$kasubbag, $petugas1, $petugas2] as $recipient) {
+            $this->assertDatabaseHas('tugas', [
+                'judul' => 'Persiapan Zona Integritas WBK/WBBM',
+                'admin_id' => $admin->id,
+                'petugas_id' => $recipient->id,
+                'status' => 'Didelegasikan',
+                'file_tugas_name' => 'instruksi_bersama.pdf',
+            ]);
+
+            $recipient->refresh();
+            $this->assertEquals('Sedang Bertugas', $recipient->status);
+            $this->assertEquals(1, $recipient->unreadNotifications()->count());
+        }
+    }
+
+    /**
+     * Test Kepala Sub Bagian can delegate a new task or forward an existing task to multiple Petugas simultaneously.
+     */
+    public function test_kepala_sub_bagian_can_delegate_to_multiple_petugas(): void
+    {
+        $admin = User::factory()->create(['jabatan' => 'Admin']);
+        $kasubbag = User::factory()->create([
+            'name' => 'Kasubbag Kepegawaian',
+            'jabatan' => 'Kepala Sub Bagian',
+            'status' => 'Sedang Bertugas',
+        ]);
+        $petugasA = User::factory()->create([
+            'name' => 'Petugas A',
+            'jabatan' => 'Petugas',
+            'status' => 'Belum Ditugaskan',
+        ]);
+        $petugasB = User::factory()->create([
+            'name' => 'Petugas B',
+            'jabatan' => 'Petugas',
+            'status' => 'Belum Ditugaskan',
+        ]);
+
+        // 1. Kasubbag creates new task for 2 Petugas at once
+        $createResponse = $this->actingAs($kasubbag)->post(route('tugas.store'), [
+            'judul' => 'Pemutakhiran Data SIKEP Mahkamah Agung',
+            'petugas_id' => [$petugasA->id, $petugasB->id],
+            'deskripsi' => 'Perbarui dokumen KP4 dan riwayat jabatan di SIKEP.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(4)->format('Y-m-d'),
+        ]);
+
+        $createResponse->assertRedirect(route('tugas.index'));
+        $this->assertEquals(2, Tugas::where('judul', 'Pemutakhiran Data SIKEP Mahkamah Agung')->count());
+
+        $petugasA->refresh();
+        $petugasB->refresh();
+        $this->assertEquals('Sedang Bertugas', $petugasA->status);
+        $this->assertEquals('Sedang Bertugas', $petugasB->status);
+
+        // 2. Kasubbag forwards a task from Admin to multiple Petugas at once
+        $tugasDariAdmin = Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $kasubbag->id,
+            'judul' => 'Penyusunan Laporan Tahunan Pengadilan',
+            'status' => 'Didelegasikan',
+        ]);
+
+        $forwardResponse = $this->actingAs($kasubbag)->post(route('tugas.delegasikan', $tugasDariAdmin->id), [
+            'petugas_id' => [$petugasA->id, $petugasB->id],
+            'catatan_delegasi' => 'Bagi pengerjaan Bab II dan Bab III.',
+            'tanggal_selesai' => now()->addDays(5)->format('Y-m-d'),
+        ]);
+
+        $forwardResponse->assertRedirect(route('tugas.show', $tugasDariAdmin->id));
+        $forwardedTasks = Tugas::where('judul', 'Penyusunan Laporan Tahunan Pengadilan')->get();
+        $this->assertCount(2, $forwardedTasks);
+
+        $kasubbag->refresh();
+        $this->assertEquals('Belum Ditugaskan', $kasubbag->status);
+    }
+
+    /**
+     * Test task classification separates Kesekretariatan (Kasubbag) and Kepaniteraan (Panitera Muda) and is visible to all users.
+     */
+    public function test_tugas_klasifikasi_kesekretariatan_and_kepaniteraan_by_role_and_visible_to_all_users(): void
+    {
+        $admin = User::factory()->create(['name' => 'Admin Pengadilan', 'jabatan' => 'Admin']);
+        $kasubbag = User::factory()->create(['name' => 'Hendra Kasubbag', 'jabatan' => 'Kepala Sub Bagian']);
+        $panmud = User::factory()->create(['name' => 'Siti Panmud', 'jabatan' => 'Panitera Muda']);
+        $petugas = User::factory()->create(['name' => 'Budi Pelaksana', 'jabatan' => 'Petugas']);
+
+        // 1. Kepala Sub Bagian delegates task -> automatically enters 'Kesekretariatan' (even if 'Kepaniteraan' sent)
+        $this->actingAs($kasubbag)->post(route('tugas.store'), [
+            'judul' => 'Penyusunan RKAKL Kesekretariatan',
+            'klasifikasi' => 'Kepaniteraan',
+            'petugas_id' => [$petugas->id],
+            'deskripsi' => 'Susun dokumen RKAKL tahun anggaran berjalan.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(5)->format('Y-m-d'),
+        ])->assertRedirect(route('tugas.index'));
+
+        $this->assertDatabaseHas('tugas', [
+            'judul' => 'Penyusunan RKAKL Kesekretariatan',
+            'admin_id' => $kasubbag->id,
+            'petugas_id' => $petugas->id,
+            'klasifikasi' => 'Kesekretariatan',
+        ]);
+
+        // 2. Panitera Muda delegates task -> automatically enters 'Kepaniteraan' (even if 'Kesekretariatan' sent)
+        $this->actingAs($panmud)->post(route('tugas.store'), [
+            'judul' => 'Minutasi Berkas Perkara Gugatan',
+            'klasifikasi' => 'Kesekretariatan',
+            'petugas_id' => [$petugas->id],
+            'deskripsi' => 'Selesaikan minutasi dan upload putusan ke SIPP.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(4)->format('Y-m-d'),
+        ])->assertRedirect(route('tugas.index'));
+
+        $this->assertDatabaseHas('tugas', [
+            'judul' => 'Minutasi Berkas Perkara Gugatan',
+            'admin_id' => $panmud->id,
+            'petugas_id' => $petugas->id,
+            'klasifikasi' => 'Kepaniteraan',
+        ]);
+
+        // Clear notifications so topbar notification dropdown doesn't interfere with table filter assertions
+        $petugas->notifications()->delete();
+
+        // 3. All user types (Admin, Kasubbag, Panitera Muda, Petugas) can view both classifications on Data Tugas
+        foreach ([$admin, $kasubbag, $panmud, $petugas] as $viewer) {
+            $allResponse = $this->actingAs($viewer)->get(route('tugas.index'));
+            $allResponse->assertStatus(200);
+            $allResponse->assertSee('Kesekretariatan');
+            $allResponse->assertSee('Kepaniteraan');
+            $allResponse->assertSee('Penyusunan RKAKL Kesekretariatan');
+            $allResponse->assertSee('Minutasi Berkas Perkara Gugatan');
+
+            // Filter only Kesekretariatan
+            $sekretariatResponse = $this->actingAs($viewer)->get(route('tugas.index', ['klasifikasi' => 'Kesekretariatan']));
+            $sekretariatResponse->assertStatus(200);
+            $sekretariatResponse->assertSee('Penyusunan RKAKL Kesekretariatan');
+            $sekretariatResponse->assertDontSee('Minutasi Berkas Perkara Gugatan');
+
+            // Filter only Kepaniteraan
+            $kepaniteraanResponse = $this->actingAs($viewer)->get(route('tugas.index', ['klasifikasi' => 'Kepaniteraan']));
+            $kepaniteraanResponse->assertStatus(200);
+            $kepaniteraanResponse->assertSee('Minutasi Berkas Perkara Gugatan');
+            $kepaniteraanResponse->assertDontSee('Penyusunan RKAKL Kesekretariatan');
+        }
+    }
 }

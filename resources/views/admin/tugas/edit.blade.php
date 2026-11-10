@@ -36,12 +36,44 @@
                 @csrf
                 @method('PUT')
                 
-                <div class="form-group">
-                    <label for="judul" class="font-weight-bold">Judul Tugas <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control @error('judul') is-invalid @enderror" id="judul" name="judul" value="{{ old('judul', $tugas->judul) }}" required>
-                    @error('judul')
-                        <div class="invalid-feedback">{{ $message }}</div>
-                    @enderror
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="form-group">
+                            <label for="judul" class="font-weight-bold">Judul Tugas <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control @error('judul') is-invalid @enderror" id="judul" name="judul" value="{{ old('judul', $tugas->judul) }}" required>
+                            @error('judul')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="klasifikasi" class="font-weight-bold">Klasifikasi Tugas <span class="text-danger">*</span></label>
+                            @if(($isAdmin ?? false))
+                                <select class="form-control @error('klasifikasi') is-invalid @enderror" id="klasifikasi" name="klasifikasi">
+                                    <option value="Kesekretariatan" {{ old('klasifikasi', $tugas->klasifikasi ?? 'Kesekretariatan') === 'Kesekretariatan' ? 'selected' : '' }}>
+                                        Kesekretariatan
+                                    </option>
+                                    <option value="Kepaniteraan" {{ old('klasifikasi', $tugas->klasifikasi ?? '') === 'Kepaniteraan' ? 'selected' : '' }}>
+                                        Kepaniteraan
+                                    </option>
+                                </select>
+                                @error('klasifikasi')
+                                    <div class="invalid-feedback">{{ $message }}</div>
+                                @enderror
+                            @elseif((Auth::user()->jabatan ?? '') === 'Panitera Muda')
+                                <input type="hidden" name="klasifikasi" value="Kepaniteraan">
+                                <div class="form-control bg-light font-weight-bold text-success d-flex align-items-center">
+                                    <i class="fas fa-balance-scale mr-2"></i> Kepaniteraan (Otomatis)
+                                </div>
+                            @else
+                                <input type="hidden" name="klasifikasi" value="Kesekretariatan">
+                                <div class="form-control bg-light font-weight-bold text-primary d-flex align-items-center">
+                                    <i class="fas fa-building mr-2"></i> Kesekretariatan (Otomatis)
+                                </div>
+                            @endif
+                        </div>
+                    </div>
                 </div>
 
                 <div class="row">

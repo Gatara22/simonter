@@ -79,6 +79,7 @@
                                 <option value="">-- Pilih Jabatan --</option>
                                 <option value="Admin" {{ old('jabatan') === 'Admin' ? 'selected' : '' }}>Admin</option>
                                 <option value="Kepala Sub Bagian" {{ old('jabatan') === 'Kepala Sub Bagian' ? 'selected' : '' }}>Kepala Sub Bagian</option>
+                                <option value="Panitera Muda" {{ old('jabatan') === 'Panitera Muda' ? 'selected' : '' }}>Panitera Muda</option>
                                 <option value="Petugas" {{ old('jabatan', 'Petugas') === 'Petugas' ? 'selected' : '' }}>Petugas</option>
                             </select>
                             @error('jabatan')

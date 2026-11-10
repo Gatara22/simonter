@@ -20,6 +20,7 @@ class TugasFactory extends Factory
     {
         return [
             'judul' => fake()->sentence(4),
+            'klasifikasi' => 'Kesekretariatan',
             'deskripsi' => fake()->paragraph(),
             'admin_id' => User::factory(),
             'petugas_id' => User::factory(),

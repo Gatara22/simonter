@@ -230,4 +230,33 @@ class UserManagementTest extends TestCase
             'jabatan' => 'Kepala Sub Bagian',
         ]);
     }
+
+    /**
+     * Test authenticated user can create a user with jabatan Panitera Muda.
+     */
+    public function test_authenticated_user_can_create_panitera_muda_user(): void
+    {
+        $admin = User::factory()->create(['jabatan' => 'Admin']);
+        $uniqueNip = '199708202021081'.rand(100, 999);
+
+        $response = $this->actingAs($admin)->post(route('user.store'), [
+            'name' => 'Siti Aminah',
+            'nip' => $uniqueNip,
+            'email' => 'panmud'.rand(100, 999).'@example.com',
+            'kontak' => '081276543210',
+            'jabatan' => 'Panitera Muda',
+            'status' => 'Belum Ditugaskan',
+            'password' => 'secret1234',
+            'password_confirmation' => 'secret1234',
+        ]);
+
+        $response->assertRedirect(route('user.index'));
+        $response->assertSessionHas('success');
+
+        $this->assertDatabaseHas('users', [
+            'nip' => $uniqueNip,
+            'name' => 'Siti Aminah',
+            'jabatan' => 'Panitera Muda',
+        ]);
+    }
 }

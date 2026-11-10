@@ -219,4 +219,80 @@ class DashboardPerformanceTest extends TestCase
         $this->assertCount(4, $trendDatasets['1_bulan']['selesai']);
         $this->assertCount(4, $trendDatasets['1_bulan']['durasi']);
     }
+
+    /**
+     * Test admin dashboard displays delegator (pemberi tugas) performance matrix with respond time, langsung closed, and perlu revisi metrics.
+     */
+    public function test_admin_dashboard_displays_pemberi_tugas_performance_leaderboard(): void
+    {
+        $admin = User::factory()->create(['name' => 'Admin Pemberi Utama', 'jabatan' => 'Admin']);
+        $kasubbag = User::factory()->create(['name' => 'Kasubbag Koordinator', 'jabatan' => 'Kepala Sub Bagian']);
+        $petugas = User::factory()->create(['name' => 'Petugas Pelaksana', 'jabatan' => 'Petugas']);
+
+        // 1. Task delegated by Admin: submitted by Petugas 10 hours ago, verified Selesai (Langsung Closed) 2 hours ago -> Respond Time = 8 hours
+        $tugasClosed = Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Tugas Langsung Closed',
+            'status' => 'Selesai',
+            'tanggal_mulai' => Carbon::now()->subDays(3)->format('Y-m-d'),
+            'tanggal_selesai' => Carbon::now()->addDays(2)->format('Y-m-d'),
+            'tanggal_tindak_lanjut' => Carbon::now()->subHours(10),
+        ]);
+        $logKirim1 = $tugasClosed->recordLog('kirim_balik', 'Menunggu Konfirmasi', 'Evidence dikirim', null, $petugas->id);
+        $logKirim1->created_at = Carbon::now()->subHours(10);
+        $logKirim1->save();
+
+        $logVerif1 = $tugasClosed->recordLog('selesai', 'Selesai', 'Langsung disetujui closed', null, $admin->id);
+        $logVerif1->created_at = Carbon::now()->subHours(2);
+        $logVerif1->save();
+
+        // 2. Task delegated by Kasubbag: submitted by Petugas 30 hours ago, returned for Perlu Revisi 6 hours ago -> Respond Time = 24 hours
+        $tugasRevisi = Tugas::factory()->create([
+            'admin_id' => $kasubbag->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Tugas Perlu Revisi',
+            'status' => 'Perlu Revisi',
+            'tanggal_mulai' => Carbon::now()->subDays(4)->format('Y-m-d'),
+            'tanggal_selesai' => Carbon::now()->addDays(1)->format('Y-m-d'),
+            'tanggal_tindak_lanjut' => Carbon::now()->subHours(30),
+        ]);
+        $logKirim2 = $tugasRevisi->recordLog('kirim_balik', 'Menunggu Konfirmasi', 'Evidence awal dikirim', null, $petugas->id);
+        $logKirim2->created_at = Carbon::now()->subHours(30);
+        $logKirim2->save();
+
+        $logVerif2 = $tugasRevisi->recordLog('revisi', 'Perlu Revisi', 'Perlu perbaikan lampiran', 'Perbaiki halaman 2', $kasubbag->id);
+        $logVerif2->created_at = Carbon::now()->subHours(6);
+        $logVerif2->save();
+
+        $response = $this->actingAs($admin)->get(route('dashboard'));
+
+        $response->assertStatus(200);
+        $response->assertSee('Matriks & Peringkat Kinerja Pemberi Tugas / Pekerjaan');
+        $response->assertSee('Admin Pemberi Utama');
+        $response->assertSee('Kasubbag Koordinator');
+        $response->assertSee('Langsung Closed');
+        $response->assertSee('Perlu Revisi');
+        $response->assertSee('Sangat Responsif');
+
+        $pemberiStats = collect($response->viewData('pemberiStats'));
+
+        $adminStat = $pemberiStats->firstWhere('id', $admin->id);
+        $this->assertNotNull($adminStat);
+        $this->assertEquals(1, $adminStat['total_delegasi']);
+        $this->assertEquals(1, $adminStat['direspon']);
+        $this->assertEquals(1, $adminStat['langsung_closed']);
+        $this->assertEquals(0, $adminStat['perlu_revisi']);
+        $this->assertEquals(100.0, $adminStat['direct_close_rate']);
+        $this->assertEquals(8.0, $adminStat['avg_respond_jam']);
+
+        $kasubbagStat = $pemberiStats->firstWhere('id', $kasubbag->id);
+        $this->assertNotNull($kasubbagStat);
+        $this->assertEquals(1, $kasubbagStat['total_delegasi']);
+        $this->assertEquals(1, $kasubbagStat['direspon']);
+        $this->assertEquals(0, $kasubbagStat['langsung_closed']);
+        $this->assertEquals(1, $kasubbagStat['perlu_revisi']);
+        $this->assertEquals(100.0, $kasubbagStat['revisi_rate']);
+        $this->assertEquals(24.0, $kasubbagStat['avg_respond_jam']);
+    }
 }

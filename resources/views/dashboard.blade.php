@@ -519,6 +519,174 @@
             </div>
         </div>
 
+        <!-- Table Leaderboard Kinerja Pemberi Tugas / Pekerjaan (Admin & Kepala Sub Bagian) -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 bg-white d-flex flex-wrap justify-content-between align-items-center">
+                <div>
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-user-check mr-1 text-info"></i> Matriks &amp; Peringkat Kinerja Pemberi Tugas / Pekerjaan
+                    </h6>
+                    <small class="text-muted">
+                        Diukur dari kecepatan respon verifikasi (<em>Respond Time</em>) sejak tugas selesai dikerjakan serta rasio keputusan <strong>Langsung Closed</strong> vs <strong>Perlu Revisi</strong>.
+                    </small>
+                </div>
+                <span class="badge badge-info px-3 py-1 font-weight-bold mt-2 mt-sm-0">
+                    {{ count($pemberiStats ?? []) }} Pemberi Tugas Terdaftar
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover" id="tableLeaderboardPemberi" width="100%" cellspacing="0">
+                        <thead class="bg-light text-center">
+                            <tr>
+                                <th width="5%">Rank</th>
+                                <th>Pemberi Tugas / Pekerjaan</th>
+                                <th width="11%">Total Didelegasikan</th>
+                                <th width="12%">Telah Direspon</th>
+                                <th width="18%">Keputusan Verifikasi (Closed vs Revisi)</th>
+                                <th width="14%">Rasio Langsung Closed</th>
+                                <th width="15%">Rata-rata Respond Time</th>
+                                <th width="15%">Evaluasi Responsivitas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse($pemberiStats ?? [] as $idx => $pm)
+                                <tr>
+                                    <td class="text-center align-middle font-weight-bold">
+                                        @if($idx === 0 && $pm['direspon'] > 0)
+                                            <span class="badge badge-warning text-dark px-2 py-1"><i class="fas fa-trophy mr-1"></i> #1</span>
+                                        @elseif($idx === 1 && $pm['direspon'] > 0)
+                                            <span class="badge badge-secondary px-2 py-1"><i class="fas fa-medal mr-1"></i> #2</span>
+                                        @elseif($idx === 2 && $pm['direspon'] > 0)
+                                            <span class="badge badge-dark px-2 py-1"><i class="fas fa-award mr-1"></i> #3</span>
+                                        @else
+                                            <span class="text-muted">#{{ $idx + 1 }}</span>
+                                        @endif
+                                    </td>
+                                    <td class="align-middle">
+                                        <div class="d-flex align-items-center">
+                                            <img src="{{ $pm['foto_url'] }}" alt="{{ $pm['name'] }}" class="rounded-circle mr-2 border" style="width: 34px; height: 34px; object-fit: cover;">
+                                            <div>
+                                                <div class="font-weight-bold text-gray-900">
+                                                    {{ $pm['name'] }}
+                                                    <span class="badge {{ $pm['jabatan'] === 'Admin' ? 'badge-primary' : 'badge-info' }} ml-1" style="font-size: 0.65rem;">
+                                                        {{ $pm['jabatan'] }}
+                                                    </span>
+                                                </div>
+                                                <small class="text-muted">NIP: {{ $pm['nip'] }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td class="text-center align-middle font-weight-bold">
+                                        {{ $pm['total_delegasi'] }} tugas
+                                        @if($pm['menunggu_verifikasi'] > 0)
+                                            <div class="mt-1">
+                                                <span class="badge badge-warning text-dark" style="font-size: 0.65rem;">
+                                                    <i class="fas fa-hourglass-half mr-1"></i>{{ $pm['menunggu_verifikasi'] }} menunggu
+                                                </span>
+                                            </div>
+                                        @endif
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <span class="badge badge-primary px-2 py-1 font-weight-bold">
+                                            {{ $pm['direspon'] }} direspon
+                                        </span>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        <div class="d-flex justify-content-center flex-wrap" style="gap: 4px;">
+                                            <span class="badge badge-success px-2 py-1" title="Tugas langsung disetujui Selesai (Closed)">
+                                                <i class="fas fa-check-circle mr-1"></i> {{ $pm['langsung_closed'] }} Langsung Closed
+                                            </span>
+                                            <span class="badge badge-danger px-2 py-1" title="Tugas dikembalikan untuk Perlu Revisi / Buka Kembali">
+                                                <i class="fas fa-undo mr-1"></i> {{ $pm['perlu_revisi'] }} Perlu Revisi
+                                            </span>
+                                        </div>
+                                    </td>
+                                    <td class="align-middle">
+                                        <div class="d-flex justify-content-between small font-weight-bold mb-1">
+                                            <span class="text-success">{{ $pm['direct_close_rate'] }}% Closed</span>
+                                            <span class="text-danger">{{ $pm['revisi_rate'] }}% Revisi</span>
+                                        </div>
+                                        <div class="progress" style="height: 6px;">
+                                            <div class="progress-bar bg-success" role="progressbar" style="width: {{ $pm['direct_close_rate'] }}%" title="Langsung Closed: {{ $pm['direct_close_rate'] }}%"></div>
+                                            <div class="progress-bar bg-danger" role="progressbar" style="width: {{ $pm['revisi_rate'] }}%" title="Perlu Revisi: {{ $pm['revisi_rate'] }}%"></div>
+                                        </div>
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        @if($pm['direspon'] > 0)
+                                            <strong class="text-gray-900">{{ $pm['respond_label'] }}</strong>
+                                            <div class="text-muted" style="font-size: 0.68rem;">Sejak tindak lanjut</div>
+                                        @else
+                                            <span class="text-muted small">-</span>
+                                        @endif
+                                    </td>
+                                    <td class="text-center align-middle">
+                                        @if($pm['direspon'] == 0)
+                                            <span class="badge badge-light border text-muted">Belum Ada Verifikasi</span>
+                                        @elseif($pm['avg_respond_jam'] <= 24)
+                                            <span class="badge badge-success px-2 py-1"><i class="fas fa-bolt mr-1"></i> Sangat Responsif</span>
+                                        @elseif($pm['avg_respond_jam'] <= 48)
+                                            <span class="badge badge-info px-2 py-1"><i class="fas fa-thumbs-up mr-1"></i> Responsif</span>
+                                        @elseif($pm['avg_respond_jam'] <= 72)
+                                            <span class="badge badge-warning text-dark px-2 py-1"><i class="fas fa-clock mr-1"></i> Cukup Responsif</span>
+                                        @else
+                                            <span class="badge badge-danger px-2 py-1"><i class="fas fa-exclamation-triangle mr-1"></i> Perlu Percepatan Verifikasi</span>
+                                        @endif
+                                    </td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="8" class="text-center py-3 text-muted">Belum ada data pemberi tugas terdaftar.</td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Keterangan Status Evaluasi Pemberi Tugas -->
+                <div class="mt-4 p-3 bg-light border rounded small">
+                    <div class="d-flex align-items-center font-weight-bold text-gray-800 mb-3">
+                        <i class="fas fa-info-circle text-info mr-2"></i>
+                        <span>Keterangan Matriks &amp; Evaluasi Kinerja Pemberi Tugas</span>
+                    </div>
+                    @php
+                        $pemberiLegend = [
+                            ['class' => 'badge-success', 'icon' => 'fa-bolt', 'label' => 'Sangat Responsif', 'desc' => 'Rata-rata waktu respon verifikasi (Respond Time) &le; 24 jam (1 hari) sejak tugas selesai dikerjakan.'],
+                            ['class' => 'badge-info', 'icon' => 'fa-thumbs-up', 'label' => 'Responsif', 'desc' => 'Rata-rata waktu respon verifikasi &le; 48 jam (2 hari).'],
+                            ['class' => 'badge-warning text-dark', 'icon' => 'fa-clock', 'label' => 'Cukup Responsif', 'desc' => 'Rata-rata waktu respon verifikasi &le; 72 jam (3 hari).'],
+                            ['class' => 'badge-danger', 'icon' => 'fa-exclamation-triangle', 'label' => 'Perlu Percepatan Verifikasi', 'desc' => 'Rata-rata waktu respon verifikasi &gt; 72 jam (&gt; 3 hari).'],
+                            ['class' => 'badge-light border text-muted', 'icon' => 'fa-minus-circle', 'label' => 'Belum Ada Verifikasi', 'desc' => 'Pemberi tugas belum memiliki tugas yang ditindaklanjuti &amp; diverifikasi pada periode terpilih.'],
+                        ];
+                    @endphp
+                    <div class="row">
+                        @foreach($pemberiLegend as $pLegend)
+                            <div class="col-lg-6 mb-2">
+                                <div class="d-flex align-items-start">
+                                    <div class="flex-shrink-0" style="width: 195px;">
+                                        <span class="badge {{ $pLegend['class'] }} d-inline-flex align-items-center px-2 py-1" style="font-size: 0.75rem;">
+                                            <i class="fas {{ $pLegend['icon'] }} mr-1"></i>
+                                            <span>{!! $pLegend['label'] !!}</span>
+                                        </span>
+                                    </div>
+                                    <div class="text-muted pl-2" style="line-height: 1.6;">
+                                        {!! $pLegend['desc'] !!}
+                                    </div>
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                    <hr class="my-2">
+                    <div class="d-flex align-items-start text-muted">
+                        <i class="fas fa-sticky-note text-gray-500 mr-2 mt-1 flex-shrink-0"></i>
+                        <div style="line-height: 1.6;">
+                            <strong>Catatan Metodologi:</strong> <em>Respond Time</em> dihitung dari selisih waktu sejak pelaksana mengirim laporan bukti tindak lanjut hingga pemberi tugas memberikan keputusan verifikasi.
+                            <em>Langsung Closed</em> = tugas yang langsung disetujui selesai tanpa pengembalian revisi. <em>Perlu Revisi</em> = tugas yang dikembalikan untuk perbaikan atau dibuka kembali (<em>reopen</em>).
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     @else
         <!-- PETUGAS CHARTS -->
         <div class="row">
@@ -917,6 +1085,31 @@
                                 info: "Menampilkan _START_ sampai _END_ dari _TOTAL_ petugas",
                                 infoEmpty: "Menampilkan 0 data",
                                 infoFiltered: "(difilter dari _MAX_ total petugas)",
+                                paginate: {
+                                    first: "Pertama",
+                                    last: "Terakhir",
+                                    next: "Selanjutnya",
+                                    previous: "Sebelumnya"
+                                }
+                            }
+                        });
+                    }
+                @endif
+
+                // Inisialisasi DataTable untuk Matriks & Peringkat Kinerja Pemberi Tugas
+                @if(count($pemberiStats ?? []) > 0)
+                    if ($('#tableLeaderboardPemberi').length) {
+                        $('#tableLeaderboardPemberi').DataTable({
+                            pageLength: 10,
+                            lengthMenu: [10, 25, 50, 100],
+                            ordering: false,
+                            language: {
+                                search: "Cari Pemberi Tugas:",
+                                lengthMenu: "Tampilkan _MENU_ data per halaman",
+                                zeroRecords: "Data pemberi tugas tidak ditemukan",
+                                info: "Menampilkan _START_ sampai _END_ dari _TOTAL_ pemberi tugas",
+                                infoEmpty: "Menampilkan 0 data",
+                                infoFiltered: "(difilter dari _MAX_ total pemberi tugas)",
                                 paginate: {
                                     first: "Pertama",
                                     last: "Terakhir",

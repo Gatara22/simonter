@@ -28,6 +28,7 @@ class Tugas extends Model
      */
     protected $fillable = [
         'judul',
+        'klasifikasi',
         'deskripsi',
         'admin_id',
         'petugas_id',

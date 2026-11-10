@@ -19,7 +19,7 @@ class DashboardController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isKasubbag = $currentUser->jabatan === 'Kepala Sub Bagian';
+        $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
         // 1. Filter Periode
         $periode = $request->query('periode', 'semua');
@@ -49,10 +49,10 @@ class DashboardController extends Controller
         };
 
         if ($isAdmin) {
-            // Admin queries: Performance of all officers
+            // Admin queries: Performance of all officers & delegators
             $tugasQuery = Tugas::query();
             $applyPeriod($tugasQuery);
-            $allTugasInPeriod = $tugasQuery->with(['petugas', 'admin'])->get();
+            $allTugasInPeriod = $tugasQuery->with(['petugas', 'admin', 'logs'])->get();
 
             $totalTugas = $allTugasInPeriod->count();
             $tugasMenunggu = $allTugasInPeriod->where('status', 'Menunggu Konfirmasi')->count();
@@ -83,8 +83,8 @@ class DashboardController extends Controller
             $avgDurasiHari = $tugasSelesai > 0 ? round($durasiTotalHari / $tugasSelesai, 1) : 0;
             $onTimeRate = $tugasSelesai > 0 ? round(($tugasTepatWaktu / $tugasSelesai) * 100, 1) : 0;
 
-            // Performance Leaderboard per Petugas / Kepala Sub Bagian
-            $petugasList = User::whereIn('jabatan', ['Kepala Sub Bagian', 'Petugas'])->orderBy('name')->get();
+            // Performance Leaderboard per Petugas / Kepala Sub Bagian / Panitera Muda
+            $petugasList = User::whereIn('jabatan', ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'])->orderBy('name')->get();
             $petugasStats = [];
 
             foreach ($petugasList as $p) {
@@ -151,6 +151,124 @@ class DashboardController extends Controller
             usort($petugasStats, fn ($a, $b) => $b['score'] <=> $a['score']);
 
             $topPetugas = ! empty($petugasStats) && $petugasStats[0]['selesai'] > 0 ? $petugasStats[0] : null;
+
+            // Performance Leaderboard per Pemberi Tugas / Pekerjaan (Admin, Kepala Sub Bagian & Panitera Muda)
+            $pemberiList = User::whereIn('jabatan', ['Admin', 'Kepala Sub Bagian', 'Panitera Muda'])->orderBy('name')->get();
+            $pemberiStats = [];
+
+            foreach ($pemberiList as $pemberi) {
+                $delegatedTasks = $allTugasInPeriod->where('admin_id', $pemberi->id);
+                $dTotal = $delegatedTasks->count();
+                $dMenunggu = $delegatedTasks->where('status', 'Menunggu Konfirmasi')->count();
+
+                $dDiresponCount = 0;
+                $dLangsungClosed = 0;
+                $dPerluRevisi = 0;
+                $dRespondHoursTotal = 0.0;
+
+                foreach ($delegatedTasks as $dt) {
+                    $logs = $dt->logs ?? collect();
+                    $hasRevisiLog = $logs->contains(fn ($l) => in_array($l->action, ['revisi', 'buka_kembali'], true) || $l->status === 'Perlu Revisi');
+                    $hasSelesaiLog = $logs->contains(fn ($l) => $l->action === 'selesai' || $l->status === 'Selesai');
+
+                    $isResponded = in_array($dt->status, ['Selesai', 'Perlu Revisi'], true) || $hasRevisiLog || $hasSelesaiLog;
+                    if (! $isResponded) {
+                        continue;
+                    }
+
+                    $dDiresponCount++;
+
+                    if ($dt->status === 'Perlu Revisi' || $hasRevisiLog) {
+                        $dPerluRevisi++;
+                    } elseif ($dt->status === 'Selesai') {
+                        $dLangsungClosed++;
+                    }
+
+                    // Calculate respond time from task submission (kirim_balik / tanggal_tindak_lanjut) to verification decision (selesai / revisi)
+                    $kirimLog = $logs->where('action', 'kirim_balik')->last();
+                    $verifLog = $logs->filter(fn ($l) => in_array($l->action, ['selesai', 'revisi'], true))->last();
+
+                    $submitTime = $kirimLog
+                        ? Carbon::parse($kirimLog->created_at)
+                        : ($dt->tanggal_tindak_lanjut ? Carbon::parse($dt->tanggal_tindak_lanjut) : Carbon::parse($dt->created_at));
+
+                    $decisionTime = $verifLog
+                        ? Carbon::parse($verifLog->created_at)
+                        : Carbon::parse($dt->updated_at);
+
+                    $diffHours = max(0.1, round(abs($submitTime->floatDiffInHours($decisionTime)), 1));
+                    $dRespondHoursTotal += $diffHours;
+                }
+
+                $avgRespondJam = $dDiresponCount > 0 ? round($dRespondHoursTotal / $dDiresponCount, 1) : 0.0;
+                $avgRespondHari = $dDiresponCount > 0 ? round($avgRespondJam / 24, 1) : 0.0;
+                $directCloseRate = $dDiresponCount > 0 ? round(($dLangsungClosed / $dDiresponCount) * 100, 1) : 0.0;
+                $revisiRate = $dDiresponCount > 0 ? round(($dPerluRevisi / $dDiresponCount) * 100, 1) : 0.0;
+
+                // Speed bonus: faster verification response time gives higher score
+                $speedScore = 0.0;
+                if ($dDiresponCount > 0) {
+                    if ($avgRespondJam <= 6) {
+                        $speedScore = 30.0;
+                    } elseif ($avgRespondJam <= 24) {
+                        $speedScore = 22.0;
+                    } elseif ($avgRespondJam <= 48) {
+                        $speedScore = 14.0;
+                    } elseif ($avgRespondJam <= 72) {
+                        $speedScore = 8.0;
+                    } else {
+                        $speedScore = 3.0;
+                    }
+                }
+
+                $pemberiScore = ($dDiresponCount * 10) + ($directCloseRate * 0.3) + $speedScore;
+
+                $predikatPemberi = 'Belum Ada Verifikasi';
+                if ($dDiresponCount > 0) {
+                    if ($avgRespondJam <= 24) {
+                        $predikatPemberi = 'Sangat Responsif';
+                    } elseif ($avgRespondJam <= 48) {
+                        $predikatPemberi = 'Responsif';
+                    } elseif ($avgRespondJam <= 72) {
+                        $predikatPemberi = 'Cukup Responsif';
+                    } else {
+                        $predikatPemberi = 'Perlu Percepatan Verifikasi';
+                    }
+                }
+
+                if ($avgRespondJam > 0 && $avgRespondJam < 24) {
+                    $respondTimeLabel = $avgRespondJam.' Jam';
+                } elseif ($avgRespondJam >= 24) {
+                    $respondTimeLabel = $avgRespondHari.' Hari ('.$avgRespondJam.' Jam)';
+                } else {
+                    $respondTimeLabel = '-';
+                }
+
+                $pemberiStats[] = [
+                    'id' => $pemberi->id,
+                    'name' => $pemberi->name,
+                    'nip' => $pemberi->nip,
+                    'jabatan' => $pemberi->jabatan,
+                    'foto_url' => $pemberi->foto_url,
+                    'total_delegasi' => $dTotal,
+                    'direspon' => $dDiresponCount,
+                    'menunggu_verifikasi' => $dMenunggu,
+                    'langsung_closed' => $dLangsungClosed,
+                    'perlu_revisi' => $dPerluRevisi,
+                    'direct_close_rate' => $directCloseRate,
+                    'revisi_rate' => $revisiRate,
+                    'avg_respond_jam' => $avgRespondJam,
+                    'avg_respond_hari' => $avgRespondHari,
+                    'respond_label' => $respondTimeLabel,
+                    'predikat' => $predikatPemberi,
+                    'score' => $pemberiScore,
+                ];
+            }
+
+            // Sort delegator leaderboard by score descending
+            usort($pemberiStats, fn ($a, $b) => $b['score'] <=> $a['score']);
+
+            $topPemberi = ! empty($pemberiStats) && $pemberiStats[0]['direspon'] > 0 ? $pemberiStats[0] : null;
 
             // Chart 1: Bar Chart per Petugas (Top 7)
             $top7Petugas = array_slice($petugasStats, 0, 7);
@@ -304,6 +422,8 @@ class DashboardController extends Controller
                 'avgDurasiHari' => $avgDurasiHari,
                 'topPetugas' => $topPetugas,
                 'petugasStats' => $petugasStats,
+                'topPemberi' => $topPemberi,
+                'pemberiStats' => $pemberiStats,
                 'chartPetugasLabels' => $chartPetugasLabels,
                 'chartPetugasSelesai' => $chartPetugasSelesai,
                 'chartPetugasAvgDurasi' => $chartPetugasAvgDurasi,
@@ -408,7 +528,7 @@ class DashboardController extends Controller
             $recentTugas = Tugas::with(['admin', 'petugas'])->where($scopeCallback)->latest()->take(5)->get();
 
             $data = [
-                'title' => $isKasubbag ? 'Dashboard Kepala Sub Bagian' : 'Dashboard Kinerja Petugas',
+                'title' => $isKasubbag ? 'Dashboard '.$currentUser->jabatan : 'Dashboard Kinerja Petugas',
                 'menuDashboard' => 'active',
                 'isAdmin' => false,
                 'isKasubbag' => $isKasubbag,

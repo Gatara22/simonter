@@ -40,6 +40,18 @@ class DatabaseSeeder extends Seeder
             ]
         );
 
+        $panmud = User::updateOrCreate(
+            ['nip' => '199708202021081003'],
+            [
+                'name' => 'Siti Aminah',
+                'email' => 'panmud@simonter.go.id',
+                'kontak' => '081276543210',
+                'jabatan' => 'Panitera Muda',
+                'status' => 'Belum Ditugaskan',
+                'password' => 'password',
+            ]
+        );
+
         $petugas = User::updateOrCreate(
             ['nip' => '199805122022031002'],
             [

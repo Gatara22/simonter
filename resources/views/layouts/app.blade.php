@@ -230,14 +230,14 @@
             </li>
             @endif
 
-            @if(Auth::user() && Auth::user()->jabatan === 'Kepala Sub Bagian')
+            @if(Auth::user() && in_array(Auth::user()->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true))
             <!-- Heading -->
             <div class="sidebar-heading">
-                MENU KEPALA SUB BAGIAN
+                MENU {{ strtoupper(Auth::user()->jabatan) }}
             </div>
 
             <!-- Nav Item - Daftar Tugas & Delegasi -->
-            <li class="nav-item {{ $menuAdminTugas ?? ($menuPetugasTugas ?? '') }}">
+            <li class="nav-item {{ $menuAdminTugas ?? ($menuKasubbagTugas ?? ($menuPetugasTugas ?? '')) }}">
                 <a class="nav-link" href="{{ route('tugas.index') }}">
                     <i class="fas fa-fw fa-tasks"></i>
                     <span>Data Tugas &amp; Delegasi</span></a>
@@ -264,6 +264,21 @@
                     <span>Data Tugas Saya</span></a>
             </li>
             @endif
+
+            <!-- Divider -->
+            <hr class="sidebar-divider">
+
+            <!-- Heading -->
+            <div class="sidebar-heading">
+                PANDUAN &amp; BANTUAN
+            </div>
+
+            <!-- Nav Item - Petunjuk Aplikasi -->
+            <li class="nav-item {{ $menuPetunjuk ?? '' }}">
+                <a class="nav-link" href="{{ route('petunjuk.index') }}">
+                    <i class="fas fa-fw fa-book-open"></i>
+                    <span>Petunjuk Aplikasi</span></a>
+            </li>
 
             <!-- Divider -->
             <hr class="sidebar-divider d-none d-md-block">
@@ -425,6 +440,10 @@
                                 <a class="dropdown-item" href="{{ route('pengaturan.index') }}">
                                     <i class="fas fa-cogs fa-sm fa-fw mr-2 text-gray-400"></i>
                                     Pengaturan Akun
+                                </a>
+                                <a class="dropdown-item" href="{{ route('petunjuk.index') }}">
+                                    <i class="fas fa-book-open fa-sm fa-fw mr-2 text-gray-400"></i>
+                                    Petunjuk Aplikasi
                                 </a>
 
                                 <div class="dropdown-divider"></div>

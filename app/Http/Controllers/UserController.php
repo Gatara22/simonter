@@ -49,7 +49,7 @@ class UserController extends Controller
             'nip' => ['required', 'string', 'max:50', 'unique:users,nip'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'kontak' => ['nullable', 'string', 'max:20'],
-            'jabatan' => ['required', 'string', 'in:Admin,Kepala Sub Bagian,Petugas'],
+            'jabatan' => ['required', 'string', 'in:Admin,Kepala Sub Bagian,Panitera Muda,Petugas'],
             'status' => ['required', 'string', 'in:Belum Ditugaskan,Sedang Bertugas'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ], [
@@ -94,7 +94,7 @@ class UserController extends Controller
             'nip' => ['required', 'string', 'max:50', 'unique:users,nip,'.$user->id],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email,'.$user->id],
             'kontak' => ['nullable', 'string', 'max:20'],
-            'jabatan' => ['required', 'string', 'in:Admin,Kepala Sub Bagian,Petugas'],
+            'jabatan' => ['required', 'string', 'in:Admin,Kepala Sub Bagian,Panitera Muda,Petugas'],
             'status' => ['required', 'string', 'in:Belum Ditugaskan,Sedang Bertugas'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ], [

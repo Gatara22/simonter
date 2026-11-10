@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\NotifikasiController;
 use App\Http\Controllers\PengaturanController;
+use App\Http\Controllers\PetunjukController;
 use App\Http\Controllers\TugasController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -64,6 +65,9 @@ Route::middleware('auth')->group(function () {
     // Pengaturan Akun (Profile Photo, Telepon/Kontak, Password)
     Route::get('pengaturan', [PengaturanController::class, 'index'])->name('pengaturan.index');
     Route::put('pengaturan', [PengaturanController::class, 'update'])->name('pengaturan.update');
+
+    // Petunjuk Aplikasi & Dokumentasi Sistem (Seluruh Role User)
+    Route::get('petunjuk-aplikasi', [PetunjukController::class, 'index'])->name('petunjuk.index');
 
     // Push & In-App Notifikasi Tugas
     Route::get('notifikasi/poll', [NotifikasiController::class, 'poll'])->name('notifikasi.poll');

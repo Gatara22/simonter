@@ -41,24 +41,25 @@
 <body>
     <table>
         <tr>
-            <td colspan="10" class="kop-title">PENGADILAN AGAMA JAKARTA UTARA</td>
+            <td colspan="11" class="kop-title">PENGADILAN AGAMA JAKARTA UTARA</td>
         </tr>
         <tr>
-            <td colspan="10" class="kop-sub">SiMonter - Sistem Monitoring Evaluasi Terpadu</td>
+            <td colspan="11" class="kop-sub">SiMonter - Sistem Monitoring Evaluasi Terpadu</td>
         </tr>
         <tr>
-            <td colspan="10" style="text-align: center; font-weight: bold; font-size: 12pt;">LAPORAN DATA DELEGASI & TINDAK LANJUT TUGAS</td>
+            <td colspan="11" style="text-align: center; font-weight: bold; font-size: 12pt;">LAPORAN DATA DELEGASI & TINDAK LANJUT TUGAS</td>
         </tr>
         <tr>
-            <td colspan="10" style="text-align: center; color: #555;">Periode: {{ $periodeString ?? 'Semua Periode' }} | Tanggal Cetak: {{ date('d/m/Y H:i') }} WIB</td>
+            <td colspan="11" style="text-align: center; color: #555;">Periode: {{ $periodeString ?? 'Semua Periode' }} | Klasifikasi: {{ $filterKlasifikasi ?? 'Semua Klasifikasi' }} | Tanggal Cetak: {{ date('d/m/Y H:i') }} WIB</td>
         </tr>
         <tr>
-            <td colspan="10"></td>
+            <td colspan="11"></td>
         </tr>
         <thead>
             <tr>
                 <th style="width: 40px;">No</th>
                 <th style="width: 220px;">Judul Tugas</th>
+                <th style="width: 140px;">Klasifikasi</th>
                 <th style="width: 160px;">Pemberi Tugas</th>
                 <th style="width: 160px;">Petugas Pelaksana</th>
                 <th style="width: 160px;">NIP Petugas</th>
@@ -77,6 +78,7 @@
                         <strong>{{ $t->judul }}</strong>
                         <div style="font-size: 8.5pt; color: #555;">{{ $t->deskripsi }}</div>
                     </td>
+                    <td class="text-center">{{ $t->klasifikasi ?? 'Kesekretariatan' }}</td>
                     <td>{{ $t->admin->name ?? 'Admin' }}</td>
                     <td>{{ $t->petugas->name ?? '-' }}</td>
                     <td class="text-center text-format">{{ $t->petugas->nip ?? '-' }}</td>

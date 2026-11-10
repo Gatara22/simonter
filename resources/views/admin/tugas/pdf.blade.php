@@ -140,7 +140,7 @@
         <tr>
             <td><strong>Filter Status</strong></td>
             <td>:</td>
-            <td>{{ $filterStatus ?? 'Semua Status' }}</td>
+            <td>{{ $filterStatus ?? 'Semua Status' }} ({{ $filterKlasifikasi ?? 'Semua Klasifikasi' }})</td>
             <td><strong>Dicetak Oleh</strong></td>
             <td>:</td>
             <td>{{ Auth::user()->name ?? 'Admin' }}</td>
@@ -160,13 +160,14 @@
         <thead>
             <tr>
                 <th width="3%">No</th>
-                <th width="20%">Judul & Instruksi Tugas</th>
-                <th width="14%">Petugas Pelaksana</th>
-                <th width="13%">Pemberi Tugas</th>
-                <th width="10%">Tanggal Mulai</th>
-                <th width="10%">Batas Selesai</th>
-                <th width="10%">Status</th>
-                <th width="20%">Hasil Tindak Lanjut & Bukti</th>
+                <th width="18%">Judul & Instruksi Tugas</th>
+                <th width="10%">Klasifikasi</th>
+                <th width="13%">Petugas Pelaksana</th>
+                <th width="12%">Pemberi Tugas</th>
+                <th width="8%">Tanggal Mulai</th>
+                <th width="8%">Batas Selesai</th>
+                <th width="9%">Status</th>
+                <th width="19%">Hasil Tindak Lanjut & Bukti</th>
             </tr>
         </thead>
         <tbody>
@@ -176,6 +177,9 @@
                     <td>
                         <strong>{{ $t->judul }}</strong>
                         <div style="color: #555; font-size: 8pt; margin-top: 2px;">{{ Str::limit($t->deskripsi, 90) }}</div>
+                    </td>
+                    <td class="text-center">
+                        <strong>{{ $t->klasifikasi ?? 'Kesekretariatan' }}</strong>
                     </td>
                     <td>
                         <strong>{{ $t->petugas->name ?? '-' }}</strong><br>

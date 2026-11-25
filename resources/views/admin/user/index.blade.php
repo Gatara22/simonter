@@ -24,6 +24,77 @@
         </div>
     @endif
 
+    @if(!empty($userStats))
+        <div class="row">
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-primary shadow h-100 py-2">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Pengguna</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $userStats['total'] ?? 0 }}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-users fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-info shadow h-100 py-2">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Admin &amp; Pimpinan Unit</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">
+                                    {{ ($userStats['admin'] ?? 0) + ($userStats['kasubbag'] ?? 0) + ($userStats['panmud'] ?? 0) }}
+                                </div>
+                                <small class="text-muted">Admin, Kasubbag, Panmud</small>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-user-shield fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-dark shadow h-100 py-2">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-gray-800 text-uppercase mb-1">Petugas Pelaksana</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $userStats['petugas'] ?? 0 }}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-user-tie fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-3 col-md-6 mb-4">
+                <div class="card border-left-success shadow h-100 py-2">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Sedang Bertugas</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $userStats['bertugas'] ?? 0 }}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-check fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="card shadow mb-4">
          <div class="card-header d-flex flex-wrap justify-content-between align-items-center">
             <div class="mb-1">
@@ -42,6 +113,40 @@
             </div>
          </div>
          <div class="card-body">
+            <!-- Quick Klasifikasi Filter Pills -->
+            <div class="d-flex flex-wrap align-items-center justify-content-between bg-light rounded border p-2 mb-3" style="gap: 6px;">
+                <div class="d-flex flex-wrap align-items-center" style="gap: 6px;">
+                    <span class="small font-weight-bold text-gray-700 mr-1">
+                        <i class="fas fa-filter text-primary mr-1"></i> Klasifikasi:
+                    </span>
+                    <a href="{{ route('user.index') }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ empty($activeKlasifikasi) ? 'btn-primary' : 'btn-outline-secondary bg-white' }}">
+                        Semua ({{ $userStats['total'] ?? 0 }})
+                    </a>
+                    <a href="{{ route('user.index', ['klasifikasi' => 'Pimpinan']) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeKlasifikasi ?? null) === 'Pimpinan' ? 'btn-warning text-dark' : 'btn-outline-warning text-dark bg-white' }}">
+                        <i class="fas fa-user-tie mr-1"></i>Pimpinan ({{ $userStats['pimpinan'] ?? 0 }})
+                    </a>
+                    <a href="{{ route('user.index', ['klasifikasi' => 'Kesekretariatan']) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeKlasifikasi ?? null) === 'Kesekretariatan' ? 'btn-primary' : 'btn-outline-primary bg-white' }}">
+                        <i class="fas fa-building mr-1"></i>Kesekretariatan ({{ $userStats['kesekretariatan'] ?? 0 }})
+                    </a>
+                    <a href="{{ route('user.index', ['klasifikasi' => 'Kepaniteraan']) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeKlasifikasi ?? null) === 'Kepaniteraan' ? 'btn-success' : 'btn-outline-success bg-white' }}">
+                        <i class="fas fa-balance-scale mr-1"></i>Kepaniteraan ({{ $userStats['kepaniteraan'] ?? 0 }})
+                    </a>
+                    <a href="{{ route('user.index', ['klasifikasi' => 'belum_diatur']) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeKlasifikasi ?? null) === 'belum_diatur' ? 'btn-dark' : 'btn-outline-secondary bg-white' }}">
+                        Belum Diatur ({{ $userStats['belum_klasifikasi'] ?? 0 }})
+                    </a>
+                </div>
+                @if(!empty($activeKlasifikasi))
+                    <a href="{{ route('user.index') }}" class="small text-danger font-weight-bold">
+                        <i class="fas fa-times-circle mr-1"></i> Reset Filter
+                    </a>
+                @endif
+            </div>
+
             <div class="table-responsive">
                 <table class="table table-bordered table-hover" id="dataTable" width="100%" cellspacing="0">
                     <thead class="bg-primary text-white">
@@ -51,6 +156,7 @@
                             <th>NIP</th>
                             <th>Kontak</th>
                             <th>Jabatan</th>
+                            <th>Klasifikasi</th>
                             <th>Status</th>
                             <th width="15%">
                                 <i class="fas fa-cog"></i> Aksi
@@ -62,10 +168,15 @@
                             <tr>
                                 <td class="text-center align-middle">{{ $loop->iteration }}</td>
                                 <td class="align-middle">
-                                    <span class="font-weight-bold">{{ $user->name }}</span>
-                                    @if($user->email)
-                                        <br><small class="text-muted"><i class="fas fa-envelope fa-xs mr-1"></i>{{ $user->email }}</small>
-                                    @endif
+                                    <div class="d-flex align-items-center">
+                                        <img src="{{ $user->foto_url }}" alt="{{ $user->name }}" class="rounded-circle mr-2 border" style="width: 34px; height: 34px; object-fit: cover;">
+                                        <div>
+                                            <span class="font-weight-bold text-gray-900">{{ $user->name }}</span>
+                                            @if($user->email)
+                                                <br><small class="text-muted"><i class="fas fa-envelope fa-xs mr-1"></i>{{ $user->email }}</small>
+                                            @endif
+                                        </div>
+                                    </div>
                                 </td>
                                 <td class="align-middle text-center">{{ $user->nip }}</td>
                                 <td class="align-middle text-center">{{ $user->kontak ?? '-' }}</td>
@@ -78,6 +189,17 @@
                                         <span class="badge badge-success badge-pill px-2 py-1">Panitera Muda</span>
                                     @else
                                         <span class="badge badge-info badge-pill px-2 py-1">Petugas</span>
+                                    @endif
+                                </td>
+                                <td class="text-center align-middle">
+                                    @if($user->klasifikasi === 'Pimpinan')
+                                        <span class="badge badge-warning text-dark badge-pill px-2 py-1"><i class="fas fa-user-tie mr-1"></i>Pimpinan</span>
+                                    @elseif($user->klasifikasi === 'Kesekretariatan')
+                                        <span class="badge badge-primary badge-pill px-2 py-1"><i class="fas fa-building mr-1"></i>Kesekretariatan</span>
+                                    @elseif($user->klasifikasi === 'Kepaniteraan')
+                                        <span class="badge badge-success badge-pill px-2 py-1"><i class="fas fa-balance-scale mr-1"></i>Kepaniteraan</span>
+                                    @else
+                                        <span class="text-muted small">-</span>
                                     @endif
                                 </td>
                                 <td class="text-center align-middle">
@@ -94,7 +216,7 @@
                                         </a>
 
                                         @if($user->id !== Auth::id())
-                                            <form action="{{ route('user.destroy', $user->id) }}" method="POST" onsubmit="return confirm('Apakah Anda yakin ingin menghapus user {{ $user->name }}?');">
+                                            <form action="{{ route('user.destroy', $user->id) }}" method="POST" data-confirm-name="{{ $user->name }}" onsubmit="return confirm('Apakah Anda yakin ingin menghapus user ' + this.dataset.confirmName + '?');">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button type="submit" class="btn btn-danger btn-sm" title="Hapus Data">
@@ -111,7 +233,7 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="7" class="text-center py-3 text-muted">Belum ada data user.</td>
+                                <td colspan="8" class="text-center py-3 text-muted">Belum ada data user.</td>
                             </tr>
                         @endforelse
                     </tbody>
@@ -149,7 +271,7 @@
                             <small class="form-text text-muted mt-1">Kosongkan periode tanggal jika ingin mencetak seluruh data.</small>
                         </div>
                         <div class="row">
-                            <div class="col-6">
+                            <div class="col-4">
                                 <div class="form-group">
                                     <label class="font-weight-bold small text-gray-800">Filter Jabatan:</label>
                                     <select class="form-control form-control-sm" name="jabatan">
@@ -161,7 +283,19 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="col-6">
+                            <div class="col-4">
+                                <div class="form-group">
+                                    <label class="font-weight-bold small text-gray-800">Filter Klasifikasi:</label>
+                                    <select class="form-control form-control-sm" name="klasifikasi">
+                                        <option value="">Semua Klasifikasi</option>
+                                        <option value="Pimpinan">Pimpinan</option>
+                                        <option value="Kesekretariatan">Kesekretariatan</option>
+                                        <option value="Kepaniteraan">Kepaniteraan</option>
+                                        <option value="belum_diatur">Belum Diatur</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-4">
                                 <div class="form-group">
                                     <label class="font-weight-bold small text-gray-800">Filter Status:</label>
                                     <select class="form-control form-control-sm" name="status">
@@ -213,7 +347,7 @@
                             <small class="form-text text-muted mt-1">Kosongkan periode tanggal jika ingin mencetak seluruh data.</small>
                         </div>
                         <div class="row">
-                            <div class="col-6">
+                            <div class="col-4">
                                 <div class="form-group">
                                     <label class="font-weight-bold small text-gray-800">Filter Jabatan:</label>
                                     <select class="form-control form-control-sm" name="jabatan">
@@ -225,7 +359,19 @@
                                     </select>
                                 </div>
                             </div>
-                            <div class="col-6">
+                            <div class="col-4">
+                                <div class="form-group">
+                                    <label class="font-weight-bold small text-gray-800">Filter Klasifikasi:</label>
+                                    <select class="form-control form-control-sm" name="klasifikasi">
+                                        <option value="">Semua Klasifikasi</option>
+                                        <option value="Pimpinan">Pimpinan</option>
+                                        <option value="Kesekretariatan">Kesekretariatan</option>
+                                        <option value="Kepaniteraan">Kepaniteraan</option>
+                                        <option value="belum_diatur">Belum Diatur</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-4">
                                 <div class="form-group">
                                     <label class="font-weight-bold small text-gray-800">Filter Status:</label>
                                     <select class="form-control form-control-sm" name="status">

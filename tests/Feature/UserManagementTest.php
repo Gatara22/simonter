@@ -259,4 +259,159 @@ class UserManagementTest extends TestCase
             'jabatan' => 'Panitera Muda',
         ]);
     }
+
+    /**
+     * Test non-admin roles cannot access user management or user export endpoints.
+     */
+    public function test_non_admin_users_cannot_access_user_management_endpoints(): void
+    {
+        $targetUser = User::factory()->create(['jabatan' => 'Petugas']);
+        $nonAdmins = [
+            User::factory()->create(['jabatan' => 'Petugas']),
+            User::factory()->create(['jabatan' => 'Kepala Sub Bagian']),
+            User::factory()->create(['jabatan' => 'Panitera Muda']),
+        ];
+
+        foreach ($nonAdmins as $user) {
+            $this->actingAs($user)->get(route('user.index'))
+                ->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error');
+
+            $this->actingAs($user)->get(route('user.create'))
+                ->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error');
+
+            $this->actingAs($user)->post(route('user.store'), [
+                'name' => 'Unauthorized',
+                'nip' => '199901012025011999',
+                'jabatan' => 'Petugas',
+                'status' => 'Belum Ditugaskan',
+                'password' => 'secret1234',
+                'password_confirmation' => 'secret1234',
+            ])->assertRedirect(route('dashboard'))->assertSessionHas('error');
+
+            $this->actingAs($user)->get(route('user.edit', $targetUser->id))
+                ->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error');
+
+            $this->actingAs($user)->put(route('user.update', $targetUser->id), [
+                'name' => 'Hacked Name',
+                'nip' => $targetUser->nip,
+                'jabatan' => 'Petugas',
+                'status' => 'Belum Ditugaskan',
+            ])->assertRedirect(route('dashboard'))->assertSessionHas('error');
+
+            $this->actingAs($user)->delete(route('user.destroy', $targetUser->id))
+                ->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error');
+
+            $this->actingAs($user)->get(route('user.export.excel'))
+                ->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error');
+
+            $this->actingAs($user)->get(route('user.export.pdf'))
+                ->assertRedirect(route('dashboard'))
+                ->assertSessionHas('error');
+        }
+
+        $this->assertDatabaseHas('users', [
+            'id' => $targetUser->id,
+            'name' => $targetUser->name,
+        ]);
+    }
+
+    /**
+     * Test admin can assign and filter Pimpinan, Kesekretariatan, and Kepaniteraan klasifikasi while existing users default to empty (null).
+     */
+    public function test_admin_can_manage_and_filter_user_klasifikasi_while_existing_users_default_empty(): void
+    {
+        $admin = User::factory()->create(['jabatan' => 'Admin']);
+        $existingUser = User::factory()->create(['name' => 'Pegawai Lama Tanpa Klasifikasi', 'jabatan' => 'Petugas']);
+
+        // 1. Existing user created without klasifikasi defaults to null (empty)
+        $this->assertNull($existingUser->fresh()->klasifikasi);
+
+        // 2. Create users with each valid klasifikasi (Pimpinan, Kesekretariatan, Kepaniteraan)
+        $pimpinanNip = '199001012020011'.rand(100, 999);
+        $this->actingAs($admin)->post(route('user.store'), [
+            'name' => 'User Pimpinan Baru',
+            'nip' => $pimpinanNip,
+            'jabatan' => 'Kepala Sub Bagian',
+            'klasifikasi' => 'Pimpinan',
+            'status' => 'Belum Ditugaskan',
+            'password' => 'secret1234',
+            'password_confirmation' => 'secret1234',
+        ])->assertRedirect(route('user.index'))->assertSessionHas('success');
+
+        $sekreNip = '199102022020021'.rand(100, 999);
+        $this->actingAs($admin)->post(route('user.store'), [
+            'name' => 'User Kesekretariatan Baru',
+            'nip' => $sekreNip,
+            'jabatan' => 'Petugas',
+            'klasifikasi' => 'Kesekretariatan',
+            'status' => 'Belum Ditugaskan',
+            'password' => 'secret1234',
+            'password_confirmation' => 'secret1234',
+        ])->assertRedirect(route('user.index'))->assertSessionHas('success');
+
+        $kepaNip = '199203032020031'.rand(100, 999);
+        $this->actingAs($admin)->post(route('user.store'), [
+            'name' => 'User Kepaniteraan Baru',
+            'nip' => $kepaNip,
+            'jabatan' => 'Panitera Muda',
+            'klasifikasi' => 'Kepaniteraan',
+            'status' => 'Belum Ditugaskan',
+            'password' => 'secret1234',
+            'password_confirmation' => 'secret1234',
+        ])->assertRedirect(route('user.index'))->assertSessionHas('success');
+
+        $this->assertDatabaseHas('users', ['nip' => $pimpinanNip, 'klasifikasi' => 'Pimpinan']);
+        $this->assertDatabaseHas('users', ['nip' => $sekreNip, 'klasifikasi' => 'Kesekretariatan']);
+        $this->assertDatabaseHas('users', ['nip' => $kepaNip, 'klasifikasi' => 'Kepaniteraan']);
+
+        // 3. Invalid klasifikasi is rejected
+        $this->actingAs($admin)->post(route('user.store'), [
+            'name' => 'Invalid Klasifikasi User',
+            'nip' => '199304042020041'.rand(100, 999),
+            'jabatan' => 'Petugas',
+            'klasifikasi' => 'Umum',
+            'status' => 'Belum Ditugaskan',
+            'password' => 'secret1234',
+            'password_confirmation' => 'secret1234',
+        ])->assertSessionHasErrors('klasifikasi');
+
+        // 4. Filter checks before manual edit
+        $this->actingAs($admin)->get(route('user.index', ['klasifikasi' => 'belum_diatur']))
+            ->assertStatus(200)
+            ->assertSee('Pegawai Lama Tanpa Klasifikasi')
+            ->assertDontSee('User Kesekretariatan Baru');
+
+        $this->actingAs($admin)->get(route('user.index', ['klasifikasi' => 'Kesekretariatan']))
+            ->assertStatus(200)
+            ->assertSee('User Kesekretariatan Baru')
+            ->assertDontSee('User Kepaniteraan Baru');
+
+        $this->actingAs($admin)->get(route('user.index', ['klasifikasi' => 'Kepaniteraan']))
+            ->assertStatus(200)
+            ->assertSee('User Kepaniteraan Baru')
+            ->assertDontSee('User Pimpinan Baru');
+
+        // 5. Existing empty user can be manually edited to Pimpinan
+        $this->actingAs($admin)->put(route('user.update', $existingUser->id), [
+            'name' => $existingUser->name,
+            'nip' => $existingUser->nip,
+            'email' => $existingUser->email,
+            'kontak' => $existingUser->kontak,
+            'jabatan' => $existingUser->jabatan,
+            'klasifikasi' => 'Pimpinan',
+            'status' => $existingUser->status,
+        ])->assertRedirect(route('user.index'))->assertSessionHas('success');
+
+        $this->assertSame('Pimpinan', $existingUser->fresh()->klasifikasi);
+
+        $this->actingAs($admin)->get(route('user.index', ['klasifikasi' => 'Pimpinan']))
+            ->assertStatus(200)
+            ->assertSee('Pegawai Lama Tanpa Klasifikasi')
+            ->assertSee('User Pimpinan Baru');
+    }
 }

@@ -147,17 +147,17 @@
             <td><strong>Filter Jabatan</strong></td>
             <td>:</td>
             <td>{{ $filterJabatan ?? 'Semua Jabatan' }}</td>
-            <td><strong>Dicetak Oleh</strong></td>
+            <td><strong>Klasifikasi</strong></td>
             <td>:</td>
-            <td>{{ Auth::user()->name ?? 'Admin' }}</td>
+            <td>{{ $filterKlasifikasi ?? 'Semua Klasifikasi' }}</td>
         </tr>
         <tr>
             <td><strong>Total Data</strong></td>
             <td>:</td>
-            <td>{{ count($users) }} Pengguna</td>
-            <td><strong>Status Akun</strong></td>
+            <td>{{ count($users) }} Pengguna (Status: {{ $filterStatus ?? 'Semua Status' }})</td>
+            <td><strong>Dicetak Oleh</strong></td>
             <td>:</td>
-            <td>{{ $filterStatus ?? 'Semua Status' }}</td>
+            <td>{{ Auth::user()->name ?? 'Admin' }}</td>
         </tr>
     </table>
 
@@ -166,12 +166,13 @@
         <thead>
             <tr>
                 <th width="4%">No</th>
-                <th width="22%">Nama Lengkap</th>
-                <th width="20%">NIP</th>
-                <th width="20%">Email</th>
-                <th width="14%">Kontak</th>
-                <th width="10%">Jabatan</th>
-                <th width="10%">Status</th>
+                <th width="20%">Nama Lengkap</th>
+                <th width="18%">NIP</th>
+                <th width="18%">Email</th>
+                <th width="12%">Kontak</th>
+                <th width="9%">Jabatan</th>
+                <th width="10%">Klasifikasi</th>
+                <th width="9%">Status</th>
             </tr>
         </thead>
         <tbody>
@@ -187,6 +188,7 @@
                             {{ $u->jabatan }}
                         </span>
                     </td>
+                    <td class="text-center">{{ $u->klasifikasi ?? '-' }}</td>
                     <td class="text-center">
                         <span class="badge {{ $u->status === 'Sedang Bertugas' ? 'badge-aktif' : 'badge-belum' }}">
                             {{ $u->status }}
@@ -195,7 +197,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="text-center" style="padding: 15px; color: #888;">Tidak ada data pengguna pada periode yang dipilih.</td>
+                    <td colspan="8" class="text-center" style="padding: 15px; color: #888;">Tidak ada data pengguna pada periode yang dipilih.</td>
                 </tr>
             @endforelse
         </tbody>

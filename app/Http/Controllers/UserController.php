@@ -13,14 +13,59 @@ use Symfony\Component\HttpFoundation\Response;
 class UserController extends Controller
 {
     /**
+     * Ensure the currently authenticated user is an Admin.
+     */
+    protected function ensureAdmin(): ?RedirectResponse
+    {
+        if (Auth::user()?->jabatan !== 'Admin') {
+            return redirect()->route('dashboard')->with('error', 'Akses ditolak. Hanya Administrator yang berwenang mengelola Data User.');
+        }
+
+        return null;
+    }
+
+    /**
      * Display a listing of the users.
      */
-    public function index(): View
+    public function index(Request $request): View|RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
+        $activeKlasifikasi = $request->query('klasifikasi');
+        if (! in_array($activeKlasifikasi, ['Pimpinan', 'Kesekretariatan', 'Kepaniteraan', 'belum_diatur'], true)) {
+            $activeKlasifikasi = null;
+        }
+
+        $allUsers = User::latest()->get();
+
+        $userStats = [
+            'total' => $allUsers->count(),
+            'admin' => $allUsers->where('jabatan', 'Admin')->count(),
+            'kasubbag' => $allUsers->where('jabatan', 'Kepala Sub Bagian')->count(),
+            'panmud' => $allUsers->where('jabatan', 'Panitera Muda')->count(),
+            'petugas' => $allUsers->where('jabatan', 'Petugas')->count(),
+            'bertugas' => $allUsers->where('status', 'Sedang Bertugas')->count(),
+            'pimpinan' => $allUsers->where('klasifikasi', 'Pimpinan')->count(),
+            'kesekretariatan' => $allUsers->where('klasifikasi', 'Kesekretariatan')->count(),
+            'kepaniteraan' => $allUsers->where('klasifikasi', 'Kepaniteraan')->count(),
+            'belum_klasifikasi' => $allUsers->whereNull('klasifikasi')->count(),
+        ];
+
+        $users = $allUsers;
+        if ($activeKlasifikasi === 'belum_diatur') {
+            $users = $allUsers->whereNull('klasifikasi')->values();
+        } elseif ($activeKlasifikasi !== null) {
+            $users = $allUsers->where('klasifikasi', $activeKlasifikasi)->values();
+        }
+
         $data = [
             'title' => 'Data User',
             'menuAdminUser' => 'active',
-            'users' => User::latest()->get(),
+            'users' => $users,
+            'userStats' => $userStats,
+            'activeKlasifikasi' => $activeKlasifikasi,
         ];
 
         return view('admin.user.index', $data);
@@ -29,8 +74,12 @@ class UserController extends Controller
     /**
      * Show the form for creating a new user.
      */
-    public function create(): View
+    public function create(): View|RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         $data = [
             'title' => 'Tambah Data User',
             'menuAdminUser' => 'active',
@@ -44,12 +93,17 @@ class UserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'nip' => ['required', 'string', 'max:50', 'unique:users,nip'],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email'],
             'kontak' => ['nullable', 'string', 'max:20'],
             'jabatan' => ['required', 'string', 'in:Admin,Kepala Sub Bagian,Panitera Muda,Petugas'],
+            'klasifikasi' => ['nullable', 'string', 'in:Pimpinan,Kesekretariatan,Kepaniteraan'],
             'status' => ['required', 'string', 'in:Belum Ditugaskan,Sedang Bertugas'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
         ], [
@@ -59,6 +113,7 @@ class UserController extends Controller
             'email.email' => 'Format email tidak valid.',
             'email.unique' => 'Email ini sudah terdaftar.',
             'jabatan.required' => 'Jabatan wajib dipilih.',
+            'klasifikasi.in' => 'Klasifikasi tidak valid (pilih Pimpinan, Kesekretariatan, atau Kepaniteraan).',
             'status.required' => 'Status penugasan wajib dipilih.',
             'password.required' => 'Password wajib diisi.',
             'password.min' => 'Password minimal 8 karakter.',
@@ -73,8 +128,12 @@ class UserController extends Controller
     /**
      * Show the form for editing the specified user.
      */
-    public function edit(User $user): View
+    public function edit(User $user): View|RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         $data = [
             'title' => 'Edit Data User',
             'menuAdminUser' => 'active',
@@ -89,12 +148,17 @@ class UserController extends Controller
      */
     public function update(Request $request, User $user): RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'nip' => ['required', 'string', 'max:50', 'unique:users,nip,'.$user->id],
             'email' => ['nullable', 'email', 'max:255', 'unique:users,email,'.$user->id],
             'kontak' => ['nullable', 'string', 'max:20'],
             'jabatan' => ['required', 'string', 'in:Admin,Kepala Sub Bagian,Panitera Muda,Petugas'],
+            'klasifikasi' => ['nullable', 'string', 'in:Pimpinan,Kesekretariatan,Kepaniteraan'],
             'status' => ['required', 'string', 'in:Belum Ditugaskan,Sedang Bertugas'],
             'password' => ['nullable', 'string', 'min:8', 'confirmed'],
         ], [
@@ -104,6 +168,7 @@ class UserController extends Controller
             'email.email' => 'Format email tidak valid.',
             'email.unique' => 'Email ini sudah terdaftar.',
             'jabatan.required' => 'Jabatan wajib dipilih.',
+            'klasifikasi.in' => 'Klasifikasi tidak valid (pilih Pimpinan, Kesekretariatan, atau Kepaniteraan).',
             'status.required' => 'Status penugasan wajib dipilih.',
             'password.min' => 'Password minimal 8 karakter.',
             'password.confirmed' => 'Konfirmasi password tidak cocok.',
@@ -123,6 +188,10 @@ class UserController extends Controller
      */
     public function destroy(User $user): RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         if ($user->id === Auth::id()) {
             return redirect()->route('user.index')->with('error', 'Anda tidak dapat menghapus akun Anda sendiri.');
         }
@@ -135,8 +204,12 @@ class UserController extends Controller
     /**
      * Export user report to Excel (.xls) with optional period filter.
      */
-    public function exportExcel(Request $request): Response
+    public function exportExcel(Request $request): Response|RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         $query = User::query();
 
         if ($request->filled('tanggal_awal')) {
@@ -147,6 +220,11 @@ class UserController extends Controller
         }
         if ($request->filled('jabatan')) {
             $query->where('jabatan', $request->query('jabatan'));
+        }
+        if ($request->query('klasifikasi') === 'belum_diatur') {
+            $query->whereNull('klasifikasi');
+        } elseif ($request->filled('klasifikasi')) {
+            $query->where('klasifikasi', $request->query('klasifikasi'));
         }
         if ($request->filled('status')) {
             $query->where('status', $request->query('status'));
@@ -163,12 +241,19 @@ class UserController extends Controller
             $periodeString = 'Sampai '.date('d/m/Y', strtotime($request->tanggal_akhir));
         }
 
+        $filterKlasifikasi = match ($request->query('klasifikasi')) {
+            'belum_diatur' => 'Belum Diatur',
+            'Pimpinan', 'Kesekretariatan', 'Kepaniteraan' => $request->query('klasifikasi'),
+            default => 'Semua Klasifikasi',
+        };
+
         $filename = 'Laporan_Data_User_'.date('Ymd_His').'.xls';
 
         $content = view('admin.user.excel', [
             'users' => $users,
             'periodeString' => $periodeString,
             'filterJabatan' => $request->jabatan ?? 'Semua Jabatan',
+            'filterKlasifikasi' => $filterKlasifikasi,
             'filterStatus' => $request->status ?? 'Semua Status',
         ])->render();
 
@@ -183,8 +268,12 @@ class UserController extends Controller
     /**
      * Export user report to PDF with optional period filter.
      */
-    public function exportPdf(Request $request): Response
+    public function exportPdf(Request $request): Response|RedirectResponse
     {
+        if ($redirect = $this->ensureAdmin()) {
+            return $redirect;
+        }
+
         $query = User::query();
 
         if ($request->filled('tanggal_awal')) {
@@ -195,6 +284,11 @@ class UserController extends Controller
         }
         if ($request->filled('jabatan')) {
             $query->where('jabatan', $request->query('jabatan'));
+        }
+        if ($request->query('klasifikasi') === 'belum_diatur') {
+            $query->whereNull('klasifikasi');
+        } elseif ($request->filled('klasifikasi')) {
+            $query->where('klasifikasi', $request->query('klasifikasi'));
         }
         if ($request->filled('status')) {
             $query->where('status', $request->query('status'));
@@ -211,11 +305,18 @@ class UserController extends Controller
             $periodeString = 'Sampai '.date('d/m/Y', strtotime($request->tanggal_akhir));
         }
 
+        $filterKlasifikasi = match ($request->query('klasifikasi')) {
+            'belum_diatur' => 'Belum Diatur',
+            'Pimpinan', 'Kesekretariatan', 'Kepaniteraan' => $request->query('klasifikasi'),
+            default => 'Semua Klasifikasi',
+        };
+
         $pdf = Pdf::loadView('admin.user.pdf', [
             'title' => 'Laporan Data User',
             'users' => $users,
             'periodeString' => $periodeString,
             'filterJabatan' => $request->jabatan ?? 'Semua Jabatan',
+            'filterKlasifikasi' => $filterKlasifikasi,
             'filterStatus' => $request->status ?? 'Semua Status',
         ]);
 

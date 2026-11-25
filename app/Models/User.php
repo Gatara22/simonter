@@ -12,12 +12,32 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Storage;
 
-#[Fillable(['name', 'nip', 'email', 'kontak', 'jabatan', 'status', 'password', 'foto'])]
+#[Fillable(['name', 'nip', 'email', 'kontak', 'jabatan', 'klasifikasi', 'status', 'password', 'foto'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    /**
+     * Get the effective unit classification for this user (falls back to role for Kasubbag/Panitera Muda).
+     */
+    public function getEffectiveKlasifikasi(): ?string
+    {
+        if (in_array($this->klasifikasi, ['Pimpinan', 'Kesekretariatan', 'Kepaniteraan'], true)) {
+            return $this->klasifikasi;
+        }
+
+        if ($this->jabatan === 'Kepala Sub Bagian') {
+            return 'Kesekretariatan';
+        }
+
+        if ($this->jabatan === 'Panitera Muda') {
+            return 'Kepaniteraan';
+        }
+
+        return null;
+    }
 
     /**
      * Get the user's profile photo URL or default avatar.

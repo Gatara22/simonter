@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Tugas;
+use App\Models\TugasDiskusi;
 use App\Models\User;
 use App\Notifications\TugasNotification;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -35,7 +36,7 @@ class TugasController extends Controller
         }
 
         if ($isAdmin || $isKasubbag) {
-            $tugasQuery = Tugas::with(['admin', 'petugas'])->latest();
+            $tugasQuery = Tugas::with(['admin', 'petugas', 'kolaborator', 'atasanPenyetuju', 'logs'])->latest();
 
             $totalTugas = Tugas::count();
             $totalKesekretariatan = Tugas::where('klasifikasi', 'Kesekretariatan')->count();
@@ -43,27 +44,63 @@ class TugasController extends Controller
             $totalDidelegasikan = Tugas::whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])->count();
             $totalMenungguKonfirmasi = Tugas::where('status', 'Menunggu Konfirmasi')->count();
             $totalSelesai = Tugas::where('status', 'Selesai')->count();
+            $totalHold = Tugas::where('status', 'HOLD')->count();
+            $totalRevisi = Tugas::where('status', 'Perlu Revisi')->count();
+            $pendingPermohonan = Tugas::where('status_permohonan', 'Menunggu Persetujuan')
+                ->where('status', '!=', 'Selesai')
+                ->when(! $isAdmin, fn ($q) => $q->where('admin_id', $currentUser->id))
+                ->count();
+            $pendingPersetujuanAtasan = Tugas::where('perlu_persetujuan_atasan', true)
+                ->where('status_persetujuan_atasan', 'Menunggu Persetujuan')
+                ->when(! $isAdmin, function ($q) use ($currentUser): void {
+                    $q->where('jabatan_atasan_penyetuju', $currentUser->jabatan)
+                        ->where('admin_id', '!=', $currentUser->id);
+                })
+                ->count();
+            $totalMendekatiDeadline = Tugas::approachingDeadline(2)->count();
         } else {
-            $tugasQuery = Tugas::with(['admin', 'petugas'])
-                ->where('petugas_id', $currentUser->id)
+            $assignedScope = function ($query) use ($currentUser): void {
+                $query->where('petugas_id', $currentUser->id)
+                    ->orWhereHas('kolaborator', fn ($k) => $k->where('users.id', $currentUser->id));
+            };
+
+            $tugasQuery = Tugas::with(['admin', 'petugas', 'kolaborator', 'atasanPenyetuju', 'logs'])
+                ->where($assignedScope)
+                ->whereNotIn('status', ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'])
                 ->latest();
 
-            $totalTugas = Tugas::where('petugas_id', $currentUser->id)->count();
-            $totalKesekretariatan = Tugas::where('petugas_id', $currentUser->id)
+            $totalTugas = Tugas::where($assignedScope)
+                ->whereNotIn('status', ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'])
+                ->count();
+            $totalKesekretariatan = Tugas::where($assignedScope)
+                ->whereNotIn('status', ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'])
                 ->where('klasifikasi', 'Kesekretariatan')
                 ->count();
-            $totalKepaniteraan = Tugas::where('petugas_id', $currentUser->id)
+            $totalKepaniteraan = Tugas::where($assignedScope)
+                ->whereNotIn('status', ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'])
                 ->where('klasifikasi', 'Kepaniteraan')
                 ->count();
-            $totalDidelegasikan = Tugas::where('petugas_id', $currentUser->id)
+            $totalDidelegasikan = Tugas::where($assignedScope)
                 ->whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])
                 ->count();
-            $totalMenungguKonfirmasi = Tugas::where('petugas_id', $currentUser->id)
+            $totalMenungguKonfirmasi = Tugas::where($assignedScope)
                 ->where('status', 'Menunggu Konfirmasi')
                 ->count();
-            $totalSelesai = Tugas::where('petugas_id', $currentUser->id)
+            $totalSelesai = Tugas::where($assignedScope)
                 ->where('status', 'Selesai')
                 ->count();
+            $totalHold = Tugas::where($assignedScope)
+                ->where('status', 'HOLD')
+                ->count();
+            $totalRevisi = Tugas::where($assignedScope)
+                ->where('status', 'Perlu Revisi')
+                ->count();
+            $pendingPermohonan = Tugas::where($assignedScope)
+                ->where('status_permohonan', 'Menunggu Persetujuan')
+                ->where('status', '!=', 'Selesai')
+                ->count();
+            $pendingPersetujuanAtasan = 0;
+            $totalMendekatiDeadline = Tugas::where($assignedScope)->approachingDeadline(2)->count();
         }
 
         // Optional klasifikasi filter
@@ -71,9 +108,41 @@ class TugasController extends Controller
             $tugasQuery->where('klasifikasi', $activeKlasifikasi);
         }
 
-        // Optional status filter
-        if ($request->filled('status')) {
-            $tugasQuery->where('status', $request->query('status'));
+        // Optional status filter (supports 'berjalan' shorthand as well as exact statuses)
+        $activeStatus = $request->query('status');
+        if ($activeStatus === 'berjalan') {
+            $tugasQuery->whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan']);
+        } elseif ($request->filled('status')) {
+            $tugasQuery->where('status', $activeStatus);
+        }
+
+        // Optional pending permohonan filter
+        $activePermohonan = $request->query('permohonan');
+        if ($activePermohonan === 'menunggu') {
+            $tugasQuery->where('status_permohonan', 'Menunggu Persetujuan')
+                ->where('status', '!=', 'Selesai');
+            if ($isKasubbag && ! $isAdmin) {
+                $tugasQuery->where('admin_id', $currentUser->id);
+            }
+        }
+
+        // Optional pending cross-unit supervisor approval filter
+        $activePersetujuanAtasan = $request->query('persetujuan_atasan');
+        if ($activePersetujuanAtasan === 'menunggu') {
+            $tugasQuery->where('perlu_persetujuan_atasan', true)
+                ->where('status_persetujuan_atasan', 'Menunggu Persetujuan');
+            if ($isKasubbag && ! $isAdmin) {
+                $tugasQuery->where('jabatan_atasan_penyetuju', $currentUser->jabatan)
+                    ->where('admin_id', '!=', $currentUser->id);
+            }
+        }
+
+        // Optional approaching-deadline filter (0-2 days ahead)
+        $activeDeadline = $request->query('deadline');
+        if ($activeDeadline === 'mendekati') {
+            $tugasQuery->approachingDeadline(2)
+                ->reorder('tanggal_selesai', 'asc')
+                ->orderBy('created_at', 'desc');
         }
 
         $title = 'Data Tugas Saya';
@@ -101,6 +170,10 @@ class TugasController extends Controller
             'canDelegate' => $canDelegate,
             'petugasList' => $petugasList,
             'activeKlasifikasi' => $activeKlasifikasi,
+            'activeStatus' => $activeStatus,
+            'activePermohonan' => $activePermohonan,
+            'activePersetujuanAtasan' => $activePersetujuanAtasan,
+            'activeDeadline' => $activeDeadline,
             'stats' => [
                 'total' => $totalTugas,
                 'kesekretariatan' => $totalKesekretariatan,
@@ -108,6 +181,11 @@ class TugasController extends Controller
                 'didelegasikan' => $totalDidelegasikan,
                 'menunggu' => $totalMenungguKonfirmasi,
                 'selesai' => $totalSelesai,
+                'hold' => $totalHold,
+                'revisi' => $totalRevisi,
+                'pending_permohonan' => $pendingPermohonan,
+                'pending_persetujuan_atasan' => $pendingPersetujuanAtasan,
+                'mendekati_deadline' => $totalMendekatiDeadline,
             ],
         ];
 
@@ -142,8 +220,9 @@ class TugasController extends Controller
 
         $data = [
             'title' => 'Delegasikan Tugas Baru',
-            'menuAdminTugas' => $isAdmin ? 'active' : '',
-            'menuKasubbagTugas' => $isKasubbag ? 'active' : '',
+            'menuDelegasiBaru' => 'active',
+            'menuAdminTugas' => '',
+            'menuKasubbagTugas' => '',
             'isAdmin' => $isAdmin,
             'isKasubbag' => $isKasubbag,
             'petugasList' => $petugasList,
@@ -181,6 +260,7 @@ class TugasController extends Controller
         $validated = $request->validate([
             'judul' => ['required', 'string', 'max:255'],
             'klasifikasi' => ['nullable', 'in:Kesekretariatan,Kepaniteraan'],
+            'mode_delegasi' => ['nullable', 'in:terpisah,kolaborasi'],
             'petugas_id' => [
                 'required',
                 'array',
@@ -234,7 +314,114 @@ class TugasController extends Controller
 
         $recipientIds = array_values(array_unique(array_map('intval', $validated['petugas_id'])));
         $targetUsers = User::whereIn('id', $recipientIds)->get()->keyBy('id');
+        $modeDelegasi = $validated['mode_delegasi'] ?? 'terpisah';
+
+        if ($modeDelegasi === 'kolaborasi' && count($recipientIds) > 1) {
+            $primaryId = $recipientIds[0];
+            $primaryUser = $targetUsers->get($primaryId);
+            $kolaboratorIds = array_slice($recipientIds, 1);
+
+            if ($currentUser->jabatan === 'Kepala Sub Bagian') {
+                $taskKlasifikasi = 'Kesekretariatan';
+            } elseif ($currentUser->jabatan === 'Panitera Muda') {
+                $taskKlasifikasi = 'Kepaniteraan';
+            } else {
+                if (! empty($validated['klasifikasi'])) {
+                    $taskKlasifikasi = $validated['klasifikasi'];
+                } elseif ($primaryUser?->jabatan === 'Panitera Muda') {
+                    $taskKlasifikasi = 'Kepaniteraan';
+                } else {
+                    $taskKlasifikasi = 'Kesekretariatan';
+                }
+            }
+
+            $crossUnitApproverRole = collect($recipientIds)
+                ->map(function (int $id) use ($targetUsers, $currentUser): ?string {
+                    $u = $targetUsers->get($id);
+
+                    return $u ? Tugas::requiredCrossUnitApproverRole($currentUser, $u) : null;
+                })
+                ->filter()
+                ->first();
+
+            $needsCrossUnitApproval = $crossUnitApproverRole !== null;
+
+            $tugas = Tugas::create([
+                'judul' => $validated['judul'],
+                'klasifikasi' => $taskKlasifikasi,
+                'petugas_id' => $primaryId,
+                'admin_id' => $currentUser->id,
+                'deskripsi' => $validated['deskripsi'],
+                'tanggal_mulai' => $validated['tanggal_mulai'],
+                'tanggal_selesai' => $validated['tanggal_selesai'],
+                'status' => $needsCrossUnitApproval ? 'Menunggu Persetujuan Atasan' : 'Didelegasikan',
+                'perlu_persetujuan_atasan' => $needsCrossUnitApproval,
+                'jabatan_atasan_penyetuju' => $crossUnitApproverRole,
+                'status_persetujuan_atasan' => $needsCrossUnitApproval ? 'Menunggu Persetujuan' : null,
+                'file_tugas' => $fileTugasPath,
+                'file_tugas_name' => $fileTugasName,
+            ]);
+
+            $tugas->kolaborator()->sync($kolaboratorIds);
+
+            $kolaboratorNames = collect($kolaboratorIds)
+                ->map(fn (int $id) => $targetUsers->get($id)?->name)
+                ->filter()
+                ->implode(', ');
+
+            if ($needsCrossUnitApproval) {
+                $tugas->recordLog(
+                    action: 'pengajuan_lintas_bidang',
+                    status: 'Menunggu Persetujuan Atasan',
+                    keterangan: 'Tugas kolaborasi lintas bidang ('.$taskKlasifikasi.') diajukan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') untuk Tim Multi-Petugas (PIC: '.($primaryUser?->name ?? 'Pelaksana').' & Kolaborator: '.$kolaboratorNames.') dan menunggu verifikasi/persetujuan '.$crossUnitApproverRole.'.',
+                    catatan: null,
+                    userId: $currentUser->id,
+                );
+
+                $this->notifyCrossUnitApprovers($tugas, $currentUser, $crossUnitApproverRole);
+
+                return redirect()->route('tugas.index')->with('success', "Tugas kolaborasi lintas bidang berhasil dibuat dan menunggu verifikasi serta persetujuan dari {$crossUnitApproverRole}.");
+            }
+
+            $tugas->recordLog(
+                action: 'delegasi',
+                status: 'Didelegasikan',
+                keterangan: 'Tugas kolaborasi ('.$taskKlasifikasi.') dibuat dan didelegasikan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada Tim Multi-Petugas — PIC Utama: '.($primaryUser?->name ?? 'Pelaksana').' & Kolaborator: '.$kolaboratorNames.'.',
+                catatan: null,
+                userId: $currentUser->id,
+            );
+
+            if ($primaryUser && $primaryUser->id !== $currentUser->id) {
+                $primaryUser->notify(new TugasNotification(
+                    tugas: $tugas,
+                    sender: $currentUser,
+                    type: 'tugas_baru',
+                    catatan: $tugas->deskripsi,
+                ));
+            }
+
+            foreach ($kolaboratorIds as $kolabId) {
+                $kolabUser = $targetUsers->get($kolabId);
+                if ($kolabUser && $kolabUser->id !== $currentUser->id) {
+                    $kolabUser->notify(new TugasNotification(
+                        tugas: $tugas,
+                        sender: $currentUser,
+                        type: 'kolaborator_baru',
+                        catatan: $tugas->deskripsi,
+                    ));
+                }
+            }
+
+            User::whereIn('id', $recipientIds)->update(['status' => 'Sedang Bertugas']);
+
+            $totalTim = count($recipientIds);
+
+            return redirect()->route('tugas.index')->with('success', "Tugas kolaborasi berhasil didelegasikan kepada {$totalTim} petugas pelaksana dalam 1 ruang kerja bersama.");
+        }
+
         $createdCount = 0;
+        $pendingApprovalCount = 0;
+        $directOfficerIds = [];
 
         foreach ($recipientIds as $recipientId) {
             $targetUser = $targetUsers->get($recipientId);
@@ -253,6 +440,9 @@ class TugasController extends Controller
                 }
             }
 
+            $approverRole = $targetUser ? Tugas::requiredCrossUnitApproverRole($currentUser, $targetUser) : null;
+            $needsApproval = $approverRole !== null;
+
             $tugasData = [
                 'judul' => $validated['judul'],
                 'klasifikasi' => $taskKlasifikasi,
@@ -261,7 +451,10 @@ class TugasController extends Controller
                 'deskripsi' => $validated['deskripsi'],
                 'tanggal_mulai' => $validated['tanggal_mulai'],
                 'tanggal_selesai' => $validated['tanggal_selesai'],
-                'status' => 'Didelegasikan',
+                'status' => $needsApproval ? 'Menunggu Persetujuan Atasan' : 'Didelegasikan',
+                'perlu_persetujuan_atasan' => $needsApproval,
+                'jabatan_atasan_penyetuju' => $approverRole,
+                'status_persetujuan_atasan' => $needsApproval ? 'Menunggu Persetujuan' : null,
                 'file_tugas' => $fileTugasPath,
                 'file_tugas_name' => $fileTugasName,
             ];
@@ -269,30 +462,53 @@ class TugasController extends Controller
             $tugas = Tugas::create($tugasData);
             $createdCount++;
 
-            $tugas->recordLog(
-                action: 'delegasi',
-                status: 'Didelegasikan',
-                keterangan: 'Tugas ('.$taskKlasifikasi.') dibuat dan didelegasikan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetUser?->name ?? 'Pelaksana').' ('.($targetUser?->jabatan ?? 'Petugas').').',
-                catatan: null,
-                userId: $currentUser->id,
-            );
+            if ($needsApproval) {
+                $pendingApprovalCount++;
+                $tugas->recordLog(
+                    action: 'pengajuan_lintas_bidang',
+                    status: 'Menunggu Persetujuan Atasan',
+                    keterangan: 'Tugas lintas bidang ('.$taskKlasifikasi.') diajukan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') untuk '.($targetUser?->name ?? 'Pelaksana').' ('.$targetUser?->klasifikasi.') dan menunggu verifikasi serta persetujuan '.$approverRole.'.',
+                    catatan: null,
+                    userId: $currentUser->id,
+                );
 
-            if ($targetUser && $targetUser->id !== $currentUser->id) {
-                $targetUser->notify(new TugasNotification(
-                    tugas: $tugas,
-                    sender: $currentUser,
-                    type: 'tugas_baru',
-                    catatan: $tugas->deskripsi,
-                ));
+                $this->notifyCrossUnitApprovers($tugas, $currentUser, $approverRole);
+            } else {
+                $directOfficerIds[] = $recipientId;
+
+                $tugas->recordLog(
+                    action: 'delegasi',
+                    status: 'Didelegasikan',
+                    keterangan: 'Tugas ('.$taskKlasifikasi.') dibuat dan didelegasikan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetUser?->name ?? 'Pelaksana').' ('.($targetUser?->jabatan ?? 'Petugas').').',
+                    catatan: null,
+                    userId: $currentUser->id,
+                );
+
+                if ($targetUser && $targetUser->id !== $currentUser->id) {
+                    $targetUser->notify(new TugasNotification(
+                        tugas: $tugas,
+                        sender: $currentUser,
+                        type: 'tugas_baru',
+                        catatan: $tugas->deskripsi,
+                    ));
+                }
             }
         }
 
-        // Update all selected officers' status to 'Sedang Bertugas'
-        User::whereIn('id', $recipientIds)->update(['status' => 'Sedang Bertugas']);
+        // Update only directly delegated officers' status to 'Sedang Bertugas'
+        if (! empty($directOfficerIds)) {
+            User::whereIn('id', $directOfficerIds)->update(['status' => 'Sedang Bertugas']);
+        }
 
-        $successMessage = $createdCount > 1
-            ? "Tugas berhasil didelegasikan kepada {$createdCount} petugas pelaksana."
-            : 'Tugas berhasil didelegasikan kepada petugas.';
+        if ($pendingApprovalCount > 0 && $pendingApprovalCount === $createdCount) {
+            $successMessage = 'Delegasi tugas lintas bidang berhasil diajukan dan sedang menunggu verifikasi serta persetujuan atasan unit terkait.';
+        } elseif ($pendingApprovalCount > 0) {
+            $successMessage = "Tugas berhasil dibuat ({$pendingApprovalCount} tugas lintas bidang menunggu persetujuan atasan unit terkait).";
+        } else {
+            $successMessage = $createdCount > 1
+                ? "Tugas berhasil didelegasikan kepada {$createdCount} petugas pelaksana."
+                : 'Tugas berhasil didelegasikan kepada petugas.';
+        }
 
         return redirect()->route('tugas.index')->with('success', $successMessage);
     }
@@ -358,14 +574,27 @@ class TugasController extends Controller
             $delegatedKlasifikasi = $tugas->klasifikasi ?: 'Kesekretariatan';
         }
 
+        $directOfficerIds = [];
+        $pendingApprovalCount = 0;
+
         foreach ($recipientIds as $index => $recipientId) {
+            $targetPetugas = $targetUsers->get($recipientId);
+            $approverRole = $targetPetugas ? Tugas::requiredCrossUnitApproverRole($currentUser, $targetPetugas) : null;
+            $needsApproval = $approverRole !== null;
+
             if ($index === 0) {
                 $tugas->klasifikasi = $delegatedKlasifikasi;
                 $tugas->deskripsi = $updatedDeskripsi;
                 $tugas->tanggal_selesai = $updatedTanggalSelesai;
                 $tugas->admin_id = $currentUser->id;
                 $tugas->petugas_id = $recipientId;
-                $tugas->status = 'Didelegasikan';
+                $tugas->status = $needsApproval ? 'Menunggu Persetujuan Atasan' : 'Didelegasikan';
+                $tugas->perlu_persetujuan_atasan = $needsApproval;
+                $tugas->jabatan_atasan_penyetuju = $approverRole;
+                $tugas->status_persetujuan_atasan = $needsApproval ? 'Menunggu Persetujuan' : null;
+                $tugas->disetujui_atasan_oleh = null;
+                $tugas->tanggal_persetujuan_atasan = null;
+                $tugas->catatan_persetujuan_atasan = null;
                 $tugas->save();
 
                 $delegatedTask = $tugas;
@@ -378,47 +607,65 @@ class TugasController extends Controller
                     'petugas_id' => $recipientId,
                     'tanggal_mulai' => $tugas->tanggal_mulai,
                     'tanggal_selesai' => $updatedTanggalSelesai,
-                    'status' => 'Didelegasikan',
+                    'status' => $needsApproval ? 'Menunggu Persetujuan Atasan' : 'Didelegasikan',
+                    'perlu_persetujuan_atasan' => $needsApproval,
+                    'jabatan_atasan_penyetuju' => $approverRole,
+                    'status_persetujuan_atasan' => $needsApproval ? 'Menunggu Persetujuan' : null,
                     'file_tugas' => $tugas->file_tugas,
                     'file_tugas_name' => $tugas->file_tugas_name,
                 ]);
             }
 
-            $targetPetugas = $targetUsers->get($recipientId);
-            $delegatedTask->recordLog(
-                action: 'delegasi',
-                status: 'Didelegasikan',
-                keterangan: 'Tugas ('.$delegatedKlasifikasi.') didelegasikan lanjutan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetPetugas?->name ?? 'Petugas').' (Petugas).',
-                catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : null,
-                userId: $currentUser->id,
-            );
+            if ($needsApproval) {
+                $pendingApprovalCount++;
+                $delegatedTask->recordLog(
+                    action: 'pengajuan_lintas_bidang',
+                    status: 'Menunggu Persetujuan Atasan',
+                    keterangan: 'Tugas lintas bidang ('.$delegatedKlasifikasi.') diteruskan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') untuk '.($targetPetugas?->name ?? 'Petugas').' ('.$targetPetugas?->klasifikasi.') dan menunggu persetujuan '.$approverRole.'.',
+                    catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : null,
+                    userId: $currentUser->id,
+                );
 
-            if ($targetPetugas && $targetPetugas->id !== $currentUser->id) {
-                $targetPetugas->notify(new TugasNotification(
-                    tugas: $delegatedTask,
-                    sender: $currentUser,
-                    type: 'delegasi_lanjutan',
-                    catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : $delegatedTask->deskripsi,
-                ));
+                $this->notifyCrossUnitApprovers($delegatedTask, $currentUser, $approverRole);
+            } else {
+                $directOfficerIds[] = $recipientId;
+                $delegatedTask->recordLog(
+                    action: 'delegasi',
+                    status: 'Didelegasikan',
+                    keterangan: 'Tugas ('.$delegatedKlasifikasi.') didelegasikan lanjutan oleh '.$currentUser->name.' ('.$currentUser->jabatan.') kepada '.($targetPetugas?->name ?? 'Petugas').' (Petugas).',
+                    catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : null,
+                    userId: $currentUser->id,
+                );
+
+                if ($targetPetugas && $targetPetugas->id !== $currentUser->id) {
+                    $targetPetugas->notify(new TugasNotification(
+                        tugas: $delegatedTask,
+                        sender: $currentUser,
+                        type: 'delegasi_lanjutan',
+                        catatan: ! empty($validated['catatan_delegasi']) ? $validated['catatan_delegasi'] : $delegatedTask->deskripsi,
+                    ));
+                }
             }
         }
 
-        // Update all selected Petugas status to 'Sedang Bertugas'
-        User::whereIn('id', $recipientIds)->update(['status' => 'Sedang Bertugas']);
-
-        // Update previous assignee (e.g. Kepala Sub Bagian) status if they have no other active assigned tasks
-        $activeCount = Tugas::where('petugas_id', $previousAssigneeId)
-            ->where('status', '!=', 'Selesai')
-            ->count();
-
-        if ($activeCount === 0) {
-            User::where('id', $previousAssigneeId)->update(['status' => 'Belum Ditugaskan']);
+        // Update directly delegated Petugas status to 'Sedang Bertugas'
+        if (! empty($directOfficerIds)) {
+            User::whereIn('id', $directOfficerIds)->update(['status' => 'Sedang Bertugas']);
         }
 
+        // Update previous assignee (e.g. Kepala Sub Bagian) status if they have no other active assigned tasks
+        $this->refreshOfficerStatus((int) $previousAssigneeId);
+
         $count = count($recipientIds);
-        $message = $count > 1
-            ? "Tugas berhasil didelegasikan kepada {$count} Petugas."
-            : 'Tugas berhasil didelegasikan kepada Petugas.';
+        if ($pendingApprovalCount > 0 && $pendingApprovalCount === $count) {
+            $message = 'Delegasi tugas lintas bidang berhasil diajukan dan menunggu verifikasi serta persetujuan atasan unit terkait.';
+        } elseif ($pendingApprovalCount > 0) {
+            $message = "Tugas berhasil didelegasikan ({$pendingApprovalCount} tugas lintas bidang menunggu persetujuan atasan unit terkait).";
+        } else {
+            $message = $count > 1
+                ? "Tugas berhasil didelegasikan kepada {$count} Petugas."
+                : 'Tugas berhasil didelegasikan kepada Petugas.';
+        }
 
         return redirect()->route('tugas.show', $tugas->id)->with('success', $message);
     }
@@ -432,10 +679,10 @@ class TugasController extends Controller
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
         $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
-        $canManageTask = $isAdmin || ($isKasubbag && $tugas->admin_id === $currentUser->id);
+        $canManageTask = $isAdmin || $tugas->admin_id === $currentUser->id;
 
         // Petugas can only view tasks assigned to them or delegated by them
-        if (! $isAdmin && ! $isKasubbag && $tugas->petugas_id !== $currentUser->id && $tugas->admin_id !== $currentUser->id) {
+        if (! $isAdmin && ! $isKasubbag && ! $tugas->isAssignedTo($currentUser) && $tugas->admin_id !== $currentUser->id) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki akses ke tugas ini.');
         }
 
@@ -444,8 +691,8 @@ class TugasController extends Controller
             ->filter(fn ($n): bool => ($n->data['tugas_id'] ?? null) === $tugas->id)
             ->markAsRead();
 
-        // If the task was just delegated and the assigned officer opens it, mark it in progress
-        if (! $isAdmin && $tugas->status === 'Didelegasikan' && $tugas->petugas_id === $currentUser->id) {
+        // If the task was just delegated and an assigned officer opens it, mark it in progress
+        if (! $isAdmin && $tugas->status === 'Didelegasikan' && $tugas->isAssignedTo($currentUser)) {
             $tugas->update(['status' => 'Sedang Dikerjakan']);
             $tugas->recordLog(
                 action: 'mulai_dikerjakan',
@@ -456,11 +703,22 @@ class TugasController extends Controller
             );
         }
 
-        $tugas->load(['admin', 'petugas', 'logs.user']);
+        $tugas->load(['admin', 'petugas', 'kolaborator', 'atasanPenyetuju', 'diskusi.user', 'logs.user']);
 
         $petugasList = ($isAdmin || $isKasubbag)
             ? User::where('jabatan', 'Petugas')->orderBy('name')->get()
             : collect();
+
+        $availableKolaborator = $canManageTask
+            ? User::whereIn('jabatan', $isAdmin ? ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'] : ['Petugas'])
+                ->where('id', '!=', $tugas->petugas_id)
+                ->orderBy('name')
+                ->get()
+            : collect();
+
+        $isAssignedOfficer = $tugas->isAssignedTo($currentUser);
+        $canChat = $tugas->canParticipateInChat($currentUser);
+        $canApproveCrossUnit = $tugas->canApproveCrossUnit($currentUser);
 
         $data = [
             'title' => 'Detail Tugas: '.$tugas->judul,
@@ -471,7 +729,11 @@ class TugasController extends Controller
             'isAdmin' => $isAdmin,
             'isKasubbag' => $isKasubbag,
             'canManageTask' => $canManageTask,
+            'isAssignedOfficer' => $isAssignedOfficer,
+            'canChat' => $canChat,
+            'canApproveCrossUnit' => $canApproveCrossUnit,
             'petugasList' => $petugasList,
+            'availableKolaborator' => $availableKolaborator,
         ];
 
         return view('admin.tugas.show', $data);
@@ -527,6 +789,7 @@ class TugasController extends Controller
         $validated = $request->validate([
             'judul' => ['required', 'string', 'max:255'],
             'klasifikasi' => ['nullable', 'in:Kesekretariatan,Kepaniteraan'],
+            'mode_delegasi' => ['nullable', 'in:terpisah,kolaborasi'],
             'petugas_id' => [
                 'required',
                 Rule::exists('users', 'id')->whereIn('jabatan', $allowedRecipientRoles),
@@ -573,6 +836,15 @@ class TugasController extends Controller
             $validated['status'] = 'Didelegasikan';
         }
 
+        if (
+            $tugas->status_permohonan === 'Menunggu Persetujuan'
+            && $tugas->permohonan_perpanjangan
+            && $tugas->tanggal_selesai
+            && $validated['tanggal_selesai'] !== $tugas->tanggal_selesai->format('Y-m-d')
+        ) {
+            $validated['status_permohonan'] = 'Disetujui';
+        }
+
         $tugas->update($validated);
 
         $tugas->recordLog(
@@ -584,6 +856,7 @@ class TugasController extends Controller
         );
 
         if ((int) $validated['petugas_id'] !== $previousAssigneeId) {
+            $tugas->kolaborator()->detach((int) $validated['petugas_id']);
             User::where('id', $validated['petugas_id'])->update(['status' => 'Sedang Bertugas']);
 
             $newAssignee = User::find($validated['petugas_id']);
@@ -596,13 +869,7 @@ class TugasController extends Controller
                 ));
             }
 
-            $activeCount = Tugas::where('petugas_id', $previousAssigneeId)
-                ->where('status', '!=', 'Selesai')
-                ->count();
-
-            if ($activeCount === 0) {
-                User::where('id', $previousAssigneeId)->update(['status' => 'Belum Ditugaskan']);
-            }
+            $this->refreshOfficerStatus((int) $previousAssigneeId);
         }
 
         return redirect()->route('tugas.show', $tugas->id)->with('success', 'Data tugas berhasil diperbarui.');
@@ -617,8 +884,12 @@ class TugasController extends Controller
         $currentUser = Auth::user();
         $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
-        if ($currentUser->jabatan !== 'Admin' && $tugas->petugas_id !== $currentUser->id) {
+        if ($currentUser->jabatan !== 'Admin' && ! $tugas->isAssignedTo($currentUser)) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk menindaklanjuti tugas ini.');
+        }
+
+        if (in_array($tugas->status, ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'], true)) {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas lintas bidang belum disetujui oleh atasan terkait.');
         }
 
         $data = [
@@ -639,8 +910,12 @@ class TugasController extends Controller
         /** @var User $currentUser */
         $currentUser = Auth::user();
 
-        if ($currentUser->jabatan !== 'Admin' && $tugas->petugas_id !== $currentUser->id) {
+        if ($currentUser->jabatan !== 'Admin' && ! $tugas->isAssignedTo($currentUser)) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk menindaklanjuti tugas ini.');
+        }
+
+        if (in_array($tugas->status, ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'], true)) {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas lintas bidang belum disetujui oleh atasan terkait.');
         }
 
         $validated = $request->validate([
@@ -681,6 +956,10 @@ class TugasController extends Controller
             $tugas->link_evidence = $validated['link_evidence'];
         }
 
+        if ($tugas->status === 'HOLD' || $tugas->hold_started_at !== null) {
+            $tugas->releaseHold();
+        }
+
         $tugas->catatan_petugas = $validated['catatan_petugas'];
         $tugas->tanggal_tindak_lanjut = now();
         $tugas->status = 'Menunggu Konfirmasi';
@@ -715,29 +994,45 @@ class TugasController extends Controller
     }
 
     /**
-     * Admin or delegating Kepala Sub Bagian review and verification of submitted task (Complete or Request Revision).
+     * Admin or delegating pemberi tugas review and verification of submitted task (Complete, Request Revision, or HOLD).
      */
     public function verifikasi(Request $request, Tugas $tugas): RedirectResponse
     {
         /** @var User $currentUser */
         $currentUser = Auth::user();
         $isAdmin = $currentUser->jabatan === 'Admin';
-        $isDelegatorKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true) && $tugas->admin_id === $currentUser->id;
+        $isPemberiTugas = $tugas->admin_id === $currentUser->id;
 
-        if (! $isAdmin && ! $isDelegatorKasubbag) {
+        if (! $isAdmin && ! $isPemberiTugas) {
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk memverifikasi tugas ini.');
         }
 
         $validated = $request->validate([
-            'status' => ['required', 'in:Selesai,Perlu Revisi'],
+            'status' => ['required', 'in:Selesai,Perlu Revisi,HOLD,Sedang Dikerjakan'],
             'catatan_admin' => ['nullable', 'string'],
         ], [
             'status.required' => 'Pilih keputusan verifikasi.',
             'status.in' => 'Status verifikasi tidak valid.',
         ]);
 
+        if ($validated['status'] === 'HOLD') {
+            return $this->processHoldStatus($tugas, $currentUser, $validated['catatan_admin'] ?? null, true);
+        }
+
+        if ($validated['status'] === 'Sedang Dikerjakan') {
+            return $this->processHoldStatus($tugas, $currentUser, $validated['catatan_admin'] ?? null, false);
+        }
+
+        // If task was previously in HOLD status, release hold and accumulate hold duration before closing/revising
+        if ($tugas->status === 'HOLD' || $tugas->hold_started_at !== null) {
+            $tugas->releaseHold();
+        }
+
         $tugas->status = $validated['status'];
         $tugas->catatan_admin = $validated['catatan_admin'] ?? null;
+        if ($validated['status'] === 'Selesai' && $tugas->tanggal_tindak_lanjut === null) {
+            $tugas->tanggal_tindak_lanjut = now();
+        }
         $tugas->save();
 
         if ($validated['status'] === 'Selesai') {
@@ -758,10 +1053,11 @@ class TugasController extends Controller
             );
         }
 
-        // Notify the assigned officer of verification result (Selesai or Perlu Revisi)
-        $petugas = $tugas->petugas;
-        if ($petugas && $petugas->id !== $currentUser->id) {
-            $petugas->notify(new TugasNotification(
+        // Notify all assigned officers (PIC + collaborators) of verification result (Selesai or Perlu Revisi)
+        $assignedOfficers = $tugas->allPetugas();
+        $notifyTargets = $assignedOfficers->reject(fn (User $user): bool => $user->id === $currentUser->id)->values();
+        if ($notifyTargets->isNotEmpty()) {
+            Notification::send($notifyTargets, new TugasNotification(
                 tugas: $tugas,
                 sender: $currentUser,
                 type: $validated['status'] === 'Selesai' ? 'selesai' : 'revisi',
@@ -769,15 +1065,10 @@ class TugasController extends Controller
             ));
         }
 
-        // If completed, check if officer has any other active tasks
+        // If completed, check if each assigned officer has any other active tasks
         if ($validated['status'] === 'Selesai') {
-            $activeCount = Tugas::where('petugas_id', $tugas->petugas_id)
-                ->where('id', '!=', $tugas->id)
-                ->where('status', '!=', 'Selesai')
-                ->count();
-
-            if ($activeCount === 0) {
-                User::where('id', $tugas->petugas_id)->update(['status' => 'Belum Ditugaskan']);
+            foreach ($assignedOfficers as $officer) {
+                $this->refreshOfficerStatus((int) $officer->id);
             }
         }
 
@@ -786,6 +1077,301 @@ class TugasController extends Controller
             : 'Tugas telah dikembalikan ke petugas untuk revisi.';
 
         return redirect()->route('tugas.show', $tugas->id)->with('success', $message);
+    }
+
+    /**
+     * Place a task on HOLD or resume it from HOLD (only allowed for Admin and Pemberi Tugas).
+     */
+    public function hold(Request $request, Tugas $tugas): RedirectResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = Auth::user();
+        $isAdmin = $currentUser->jabatan === 'Admin';
+        $isPemberiTugas = $tugas->admin_id === $currentUser->id;
+
+        if (! $isAdmin && ! $isPemberiTugas) {
+            return redirect()->route('tugas.index')->with('error', 'Status HOLD hanya dapat diberikan oleh Admin dan pemberi tugas.');
+        }
+
+        if ($tugas->status === 'Selesai') {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas yang sudah Selesai (Closed) tidak dapat diubah ke status HOLD.');
+        }
+
+        $validated = $request->validate([
+            'action' => ['nullable', 'in:hold,lanjutkan'],
+            'catatan_hold' => ['nullable', 'string'],
+            'catatan_admin' => ['nullable', 'string'],
+        ]);
+
+        $catatan = $validated['catatan_hold'] ?? $validated['catatan_admin'] ?? null;
+        $shouldHold = ($validated['action'] ?? null) === 'lanjutkan'
+            ? false
+            : ($tugas->status !== 'HOLD' || ($validated['action'] ?? null) === 'hold');
+
+        return $this->processHoldStatus($tugas, $currentUser, $catatan, $shouldHold);
+    }
+
+    /**
+     * Internal helper to transition a task into HOLD or resume it from HOLD.
+     */
+    protected function processHoldStatus(Tugas $tugas, User $currentUser, ?string $catatan, bool $shouldHold): RedirectResponse
+    {
+        if ($shouldHold) {
+            $tugas->startHold();
+            if ($tugas->status_permohonan === 'Menunggu Persetujuan' && $tugas->permohonan_hold) {
+                $tugas->status_permohonan = 'Disetujui';
+            }
+            if ($catatan !== null && $catatan !== '') {
+                $tugas->catatan_admin = $catatan;
+            }
+            $tugas->save();
+
+            $tugas->recordLog(
+                action: 'hold',
+                status: 'HOLD',
+                keterangan: 'Tugas diubah ke status HOLD (ditunda sementara) oleh '.$currentUser->name.' ('.$currentUser->jabatan.'). Durasi selama status HOLD tidak dihitung dalam keterlambatan performa.',
+                catatan: $catatan,
+                userId: $currentUser->id,
+            );
+
+            $notifyTargets = $tugas->allPetugas()->reject(fn (User $user): bool => $user->id === $currentUser->id)->values();
+            if ($notifyTargets->isNotEmpty()) {
+                Notification::send($notifyTargets, new TugasNotification(
+                    tugas: $tugas,
+                    sender: $currentUser,
+                    type: 'hold',
+                    catatan: $catatan,
+                ));
+            }
+
+            return redirect()->route('tugas.show', $tugas->id)->with('success', 'Tugas berhasil diubah ke status HOLD. Durasi selama status HOLD tidak terhitung dalam keterlambatan penyelesaian tugas.');
+        }
+
+        // Resume task from HOLD
+        $tugas->releaseHold();
+        $nextStatus = ($tugas->file_evidence || $tugas->link_evidence || $tugas->tanggal_tindak_lanjut)
+            ? 'Sedang Dikerjakan'
+            : 'Sedang Dikerjakan';
+        $tugas->status = $nextStatus;
+        if ($catatan !== null && $catatan !== '') {
+            $tugas->catatan_admin = $catatan;
+        }
+        $tugas->save();
+
+        $tugas->recordLog(
+            action: 'lanjutkan',
+            status: 'Sedang Dikerjakan',
+            keterangan: 'Status HOLD dicabut dan pengerjaan tugas dilanjutkan kembali oleh '.$currentUser->name.' ('.$currentUser->jabatan.').',
+            catatan: $catatan,
+            userId: $currentUser->id,
+        );
+
+        $notifyTargets = $tugas->allPetugas()->reject(fn (User $user): bool => $user->id === $currentUser->id)->values();
+        if ($notifyTargets->isNotEmpty()) {
+            Notification::send($notifyTargets, new TugasNotification(
+                tugas: $tugas,
+                sender: $currentUser,
+                type: 'lanjutkan',
+                catatan: $catatan,
+            ));
+        }
+
+        return redirect()->route('tugas.show', $tugas->id)->with('success', 'Status HOLD berhasil dicabut dan tugas kembali dalam status Sedang Dikerjakan.');
+    }
+
+    /**
+     * Officer (Petugas) submits a checklist request to the delegator to HOLD the task and/or extend the deadline.
+     */
+    public function ajukanPermohonan(Request $request, Tugas $tugas): RedirectResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = Auth::user();
+
+        if (! $tugas->isAssignedTo($currentUser)) {
+            return redirect()->route('tugas.index')->with('error', 'Hanya petugas pelaksana tugas ini yang dapat mengajukan permohonan Hold atau perpanjangan waktu.');
+        }
+
+        if ($tugas->status === 'Selesai') {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas yang sudah Selesai (Closed) tidak dapat diajukan permohonan.');
+        }
+
+        $jenisArray = (array) $request->input('jenis_permohonan', []);
+        $wantsHold = in_array('hold', $jenisArray, true) || $request->boolean('permohonan_hold');
+        $wantsPerpanjangan = in_array('perpanjangan', $jenisArray, true) || $request->boolean('permohonan_perpanjangan');
+
+        if (! $wantsHold && ! $wantsPerpanjangan) {
+            return redirect()->back()
+                ->withErrors(['jenis_permohonan' => 'Pilih minimal 1 ceklist permohonan (Permohonan Hold Tugas atau Perpanjangan Masa Pengerjaan).'])
+                ->withInput();
+        }
+
+        $minDate = $tugas->tanggal_selesai
+            ? $tugas->tanggal_selesai->format('Y-m-d')
+            : ($tugas->tanggal_mulai ? $tugas->tanggal_mulai->format('Y-m-d') : date('Y-m-d'));
+
+        $validated = $request->validate([
+            'usulan_tanggal_selesai' => [
+                $wantsPerpanjangan ? 'required' : 'nullable',
+                'date',
+                'after_or_equal:'.$minDate,
+            ],
+            'catatan_permohonan' => ['required', 'string', 'max:1000'],
+        ], [
+            'usulan_tanggal_selesai.required' => 'Usulan tanggal batas selesai baru wajib diisi jika mencentang permohonan perpanjangan masa pengerjaan.',
+            'usulan_tanggal_selesai.date' => 'Format usulan tanggal selesai baru tidak valid.',
+            'usulan_tanggal_selesai.after_or_equal' => 'Usulan batas selesai baru tidak boleh sebelum batas waktu tugas saat ini.',
+            'catatan_permohonan.required' => 'Alasan / keterangan permohonan wajib diisi.',
+        ]);
+
+        $tugas->permohonan_hold = $wantsHold;
+        $tugas->permohonan_perpanjangan = $wantsPerpanjangan;
+        $tugas->usulan_tanggal_selesai = $wantsPerpanjangan ? ($validated['usulan_tanggal_selesai'] ?? null) : null;
+        $tugas->catatan_permohonan = $validated['catatan_permohonan'];
+        $tugas->tanggal_permohonan = now();
+        $tugas->status_permohonan = 'Menunggu Persetujuan';
+        $tugas->save();
+
+        $checkedLabels = [];
+        if ($wantsHold) {
+            $checkedLabels[] = 'Permohonan HOLD Tugas';
+        }
+        if ($wantsPerpanjangan) {
+            $usulanStr = ! empty($validated['usulan_tanggal_selesai'])
+                ? ' (Usulan Deadline Baru: '.date('d/m/Y', strtotime($validated['usulan_tanggal_selesai'])).')'
+                : '';
+            $checkedLabels[] = 'Permohonan Edit / Perpanjangan Masa Pengerjaan'.$usulanStr;
+        }
+
+        $ringkasanPermohonan = implode(' & ', $checkedLabels);
+
+        $tugas->recordLog(
+            action: 'permohonan_petugas',
+            status: $tugas->status,
+            keterangan: 'Petugas pelaksana '.$currentUser->name.' ('.$currentUser->jabatan.') mengajukan ceklist permohonan kepada pemberi tugas: ['.$ringkasanPermohonan.'].',
+            catatan: $validated['catatan_permohonan'],
+            userId: $currentUser->id,
+        );
+
+        $recipients = User::where(function ($query) use ($tugas): void {
+            $query->where('jabatan', 'Admin')
+                ->orWhere('id', $tugas->admin_id);
+        })
+            ->where('id', '!=', $currentUser->id)
+            ->get();
+
+        if ($recipients->isNotEmpty()) {
+            Notification::send($recipients, new TugasNotification(
+                tugas: $tugas,
+                sender: $currentUser,
+                type: 'permohonan_petugas',
+                catatan: '['.$ringkasanPermohonan.'] — '.$validated['catatan_permohonan'],
+            ));
+        }
+
+        return redirect()->route('tugas.show', $tugas->id)->with('success', 'Permohonan ('.$ringkasanPermohonan.') berhasil dikirimkan kepada pemberi tugas.');
+    }
+
+    /**
+     * Admin or Pemberi Tugas responds to the officer's checklist request (Approve HOLD / Extend Deadline or Reject).
+     */
+    public function tanggapiPermohonan(Request $request, Tugas $tugas): RedirectResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = Auth::user();
+        $isAdmin = $currentUser->jabatan === 'Admin';
+        $isPemberiTugas = $tugas->admin_id === $currentUser->id;
+
+        if (! $isAdmin && ! $isPemberiTugas) {
+            return redirect()->route('tugas.index')->with('error', 'Hanya Admin dan pemberi tugas yang dapat menanggapi permohonan petugas.');
+        }
+
+        $validated = $request->validate([
+            'keputusan' => ['required', 'in:setujui,tolak'],
+            'tanggal_selesai_baru' => [
+                'nullable',
+                'date',
+                'after_or_equal:'.($tugas->tanggal_mulai ? $tugas->tanggal_mulai->format('Y-m-d') : date('Y-m-d')),
+            ],
+            'catatan_admin' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'keputusan.required' => 'Pilih keputusan tanggapan permohonan.',
+            'tanggal_selesai_baru.after_or_equal' => 'Batas selesai baru tidak boleh sebelum tanggal mulai tugas.',
+        ]);
+
+        if ($validated['keputusan'] === 'setujui') {
+            $tindakanList = [];
+
+            if ($tugas->permohonan_perpanjangan) {
+                $newDeadline = ! empty($validated['tanggal_selesai_baru'])
+                    ? $validated['tanggal_selesai_baru']
+                    : ($tugas->usulan_tanggal_selesai ? $tugas->usulan_tanggal_selesai->format('Y-m-d') : null);
+
+                if ($newDeadline) {
+                    $tugas->tanggal_selesai = $newDeadline;
+                    $tindakanList[] = 'Masa pengerjaan diperpanjang hingga '.date('d/m/Y', strtotime($newDeadline));
+                }
+            }
+
+            if ($tugas->permohonan_hold) {
+                $tugas->startHold();
+                $tindakanList[] = 'Status tugas diubah menjadi HOLD';
+            }
+
+            $tugas->status_permohonan = 'Disetujui';
+            if (! empty($validated['catatan_admin'])) {
+                $tugas->catatan_admin = $validated['catatan_admin'];
+            }
+            $tugas->save();
+
+            $ketTindakan = ! empty($tindakanList) ? ' ('.implode(' & ', $tindakanList).')' : '';
+
+            $tugas->recordLog(
+                action: $tugas->status === 'HOLD' ? 'hold' : 'tanggapi_permohonan',
+                status: $tugas->status,
+                keterangan: 'Permohonan petugas disetujui oleh '.$currentUser->name.' ('.$currentUser->jabatan.')'.$ketTindakan.'.',
+                catatan: $validated['catatan_admin'] ?? null,
+                userId: $currentUser->id,
+            );
+
+            $notifyTargets = $tugas->allPetugas()->reject(fn (User $user): bool => $user->id === $currentUser->id)->values();
+            if ($notifyTargets->isNotEmpty()) {
+                Notification::send($notifyTargets, new TugasNotification(
+                    tugas: $tugas,
+                    sender: $currentUser,
+                    type: $tugas->status === 'HOLD' ? 'hold' : 'tanggapi_permohonan',
+                    catatan: $validated['catatan_admin'] ?? ('Permohonan Anda telah disetujui'.$ketTindakan.'.'),
+                ));
+            }
+
+            return redirect()->route('tugas.show', $tugas->id)->with('success', 'Permohonan petugas berhasil disetujui'.$ketTindakan.'.');
+        }
+
+        // Reject request
+        $tugas->status_permohonan = 'Ditolak';
+        if (! empty($validated['catatan_admin'])) {
+            $tugas->catatan_admin = $validated['catatan_admin'];
+        }
+        $tugas->save();
+
+        $tugas->recordLog(
+            action: 'tolak_permohonan',
+            status: $tugas->status,
+            keterangan: 'Permohonan petugas ditolak oleh '.$currentUser->name.' ('.$currentUser->jabatan.').',
+            catatan: $validated['catatan_admin'] ?? null,
+            userId: $currentUser->id,
+        );
+
+        $notifyTargets = $tugas->allPetugas()->reject(fn (User $user): bool => $user->id === $currentUser->id)->values();
+        if ($notifyTargets->isNotEmpty()) {
+            Notification::send($notifyTargets, new TugasNotification(
+                tugas: $tugas,
+                sender: $currentUser,
+                type: 'tanggapi_permohonan',
+                catatan: $validated['catatan_admin'] ?? 'Permohonan Anda belum dapat disetujui.',
+            ));
+        }
+
+        return redirect()->route('tugas.show', $tugas->id)->with('success', 'Permohonan petugas telah ditolak.');
     }
 
     /**
@@ -823,8 +1409,11 @@ class TugasController extends Controller
         $tugas->tanggal_tindak_lanjut = null;
         $tugas->save();
 
-        // Update assigned officer's status back to 'Sedang Bertugas'
-        User::where('id', $tugas->petugas_id)->update(['status' => 'Sedang Bertugas']);
+        // Update all assigned officers' status back to 'Sedang Bertugas'
+        $assignedOfficers = $tugas->allPetugas();
+        if ($assignedOfficers->isNotEmpty()) {
+            User::whereIn('id', $assignedOfficers->pluck('id')->all())->update(['status' => 'Sedang Bertugas']);
+        }
 
         $petugas = $tugas->petugas;
         $tugas->recordLog(
@@ -835,8 +1424,9 @@ class TugasController extends Controller
             userId: $currentUser->id,
         );
 
-        if ($petugas && $petugas->id !== $currentUser->id) {
-            $petugas->notify(new TugasNotification(
+        $notifyTargets = $assignedOfficers->reject(fn (User $user): bool => $user->id === $currentUser->id)->values();
+        if ($notifyTargets->isNotEmpty()) {
+            Notification::send($notifyTargets, new TugasNotification(
                 tugas: $tugas,
                 sender: $currentUser,
                 type: 'buka_kembali',
@@ -845,6 +1435,311 @@ class TugasController extends Controller
         }
 
         return redirect()->route('tugas.show', $tugas->id)->with('success', 'Tugas berhasil dibuka kembali dan didelegasikan ulang kepada petugas yang bersangkutan.');
+    }
+
+    /**
+     * Send a flexible progress chat message and/or file/link attachment without auto-changing task status to review.
+     */
+    public function kirimDiskusi(Request $request, Tugas $tugas): RedirectResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = Auth::user();
+
+        if (! $tugas->canParticipateInChat($currentUser)) {
+            return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki akses untuk berkomunikasi pada tugas ini.');
+        }
+
+        if ($tugas->status === 'Selesai') {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas sudah berstatus Selesai (Closed). Buka kembali tugas terlebih dahulu jika ingin melanjutkan diskusi.');
+        }
+
+        if (in_array($tugas->status, ['Menunggu Persetujuan Atasan', 'Ditolak Atasan'], true)) {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas lintas bidang belum disetujui oleh atasan terkait.');
+        }
+
+        $validated = $request->validate([
+            'pesan' => ['nullable', 'string', 'max:2000', 'required_without_all:file_lampiran,link_url'],
+            'file_lampiran' => ['nullable', 'file', 'max:10240', 'mimes:pdf,doc,docx,xls,xlsx,zip,rar,jpg,jpeg,png,webp'],
+            'link_url' => ['nullable', 'url', 'max:500'],
+        ], [
+            'pesan.required_without_all' => 'Tuliskan pesan progres, lampirkan berkas, atau sertakan tautan URL terlebih dahulu.',
+            'file_lampiran.file' => 'Berkas lampiran diskusi harus berupa file yang valid.',
+            'file_lampiran.max' => 'Ukuran file lampiran diskusi maksimal 10 MB.',
+            'file_lampiran.mimes' => 'Format file yang didukung: PDF, DOC, DOCX, XLS, XLSX, ZIP, RAR, JPG, PNG, WEBP.',
+            'link_url.url' => 'Format tautan URL tidak valid (harus diawali http:// atau https://).',
+        ]);
+
+        $filePath = null;
+        $fileName = null;
+        $fileUrl = null;
+
+        if ($request->hasFile('file_lampiran')) {
+            $file = $request->file('file_lampiran');
+            $filePath = $this->storeUploadedFile($file, 'diskusi');
+            $fileName = $file->getClientOriginalName();
+            $fileUrl = asset('storage/'.$filePath);
+        }
+
+        $linkUrl = ! empty($validated['link_url']) ? $validated['link_url'] : null;
+        $pesan = isset($validated['pesan']) && trim($validated['pesan']) !== '' ? trim($validated['pesan']) : null;
+
+        TugasDiskusi::create([
+            'tugas_id' => $tugas->id,
+            'user_id' => $currentUser->id,
+            'pesan' => $pesan,
+            'file_path' => $filePath,
+            'file_name' => $fileName,
+            'link_url' => $linkUrl,
+        ]);
+
+        $logUrl = $fileUrl ?? $linkUrl;
+        $logFileName = $fileName;
+
+        $activityParts = [];
+        if ($pesan !== null) {
+            $activityParts[] = 'mengirim pesan progres';
+        }
+        if ($fileUrl !== null) {
+            $activityParts[] = 'mengunggah berkas ('.$fileName.')';
+        } elseif ($linkUrl !== null) {
+            $activityParts[] = 'melampirkan tautan URL';
+        }
+        $activitySummary = ! empty($activityParts) ? implode(' & ', $activityParts) : 'mengirim pembaruan diskusi';
+
+        $tugas->recordLog(
+            action: 'diskusi',
+            status: $tugas->status,
+            keterangan: $currentUser->name.' ('.$currentUser->jabatan.') '.$activitySummary.' di ruang diskusi (status tugas tetap '.$tugas->status.', tidak otomatis masuk tinjauan).',
+            catatan: $pesan,
+            userId: $currentUser->id,
+            fileUrl: $logUrl,
+            fileName: $logFileName,
+        );
+
+        $participantIds = collect([$tugas->admin_id, $tugas->petugas_id])
+            ->merge($tugas->kolaborator()->pluck('users.id'))
+            ->filter()
+            ->unique()
+            ->reject(fn ($id): bool => (int) $id === (int) $currentUser->id)
+            ->values();
+
+        if ($participantIds->isNotEmpty()) {
+            $recipients = User::whereIn('id', $participantIds->all())->get();
+            if ($recipients->isNotEmpty()) {
+                $notifCatatan = $pesan ?? ($fileName ? 'Mengunggah berkas: '.$fileName : $linkUrl);
+                Notification::send($recipients, new TugasNotification(
+                    tugas: $tugas,
+                    sender: $currentUser,
+                    type: 'diskusi_progres',
+                    catatan: $notifCatatan,
+                ));
+            }
+        }
+
+        $successMessage = $logUrl !== null
+            ? 'Pesan progres dan tautan lampiran berhasil dicatat ke Ruang Diskusi & Log Aktivitas tanpa mengubah status menjadi Menunggu Konfirmasi.'
+            : 'Pesan progres berhasil dikirim ke Ruang Diskusi.';
+
+        return redirect()->to(route('tugas.show', $tugas->id).'#ruang-diskusi')->with('success', $successMessage);
+    }
+
+    /**
+     * Add or update collaborating officers (multi-petugas) on a task (only Admin or Author).
+     */
+    public function syncKolaborator(Request $request, Tugas $tugas): RedirectResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = Auth::user();
+        $isAdmin = $currentUser->jabatan === 'Admin';
+        $isAuthor = (int) $tugas->admin_id === (int) $currentUser->id;
+
+        if (! $isAdmin && ! $isAuthor) {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Hanya Admin atau Pemberi Tugas yang dapat mengelola tim multi-petugas.');
+        }
+
+        if ($tugas->status === 'Selesai') {
+            return redirect()->route('tugas.show', $tugas->id)->with('error', 'Tugas yang sudah Selesai tidak dapat diubah tim petugasnya.');
+        }
+
+        $allowedRoles = $isAdmin ? ['Kepala Sub Bagian', 'Panitera Muda', 'Petugas'] : ['Petugas'];
+
+        $validated = $request->validate([
+            'kolaborator_ids' => ['nullable', 'array'],
+            'kolaborator_ids.*' => [
+                'integer',
+                Rule::exists('users', 'id')->whereIn('jabatan', $allowedRoles),
+            ],
+        ], [
+            'kolaborator_ids.*.exists' => 'Salah satu petugas kolaborator yang dipilih tidak valid.',
+        ]);
+
+        $newIds = collect($validated['kolaborator_ids'] ?? [])
+            ->map(fn ($id): int => (int) $id)
+            ->reject(fn (int $id): bool => $id === (int) $tugas->petugas_id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $oldIds = $tugas->kolaborator()->pluck('users.id')->map(fn ($id): int => (int) $id)->all();
+
+        $addedIds = array_values(array_diff($newIds, $oldIds));
+        $removedIds = array_values(array_diff($oldIds, $newIds));
+
+        $tugas->kolaborator()->sync($newIds);
+
+        if (! empty($addedIds)) {
+            $addedUsers = User::whereIn('id', $addedIds)->get();
+
+            $crossUnitApproverRole = $addedUsers
+                ->map(fn (User $u): ?string => Tugas::requiredCrossUnitApproverRole($currentUser, $u))
+                ->filter()
+                ->first();
+
+            if ($crossUnitApproverRole !== null) {
+                $tugas->status = 'Menunggu Persetujuan Atasan';
+                $tugas->perlu_persetujuan_atasan = true;
+                $tugas->jabatan_atasan_penyetuju = $crossUnitApproverRole;
+                $tugas->status_persetujuan_atasan = 'Menunggu Persetujuan';
+                $tugas->disetujui_atasan_oleh = null;
+                $tugas->tanggal_persetujuan_atasan = null;
+                $tugas->catatan_persetujuan_atasan = null;
+                $tugas->save();
+
+                $this->notifyCrossUnitApprovers($tugas, $currentUser, $crossUnitApproverRole);
+            } else {
+                User::whereIn('id', $addedIds)->update(['status' => 'Sedang Bertugas']);
+
+                $notifyUsers = $addedUsers->where('id', '!=', $currentUser->id)->values();
+                if ($notifyUsers->isNotEmpty()) {
+                    Notification::send($notifyUsers, new TugasNotification(
+                        tugas: $tugas,
+                        sender: $currentUser,
+                        type: 'kolaborator_baru',
+                        catatan: $tugas->deskripsi,
+                    ));
+                }
+            }
+        }
+
+        foreach ($removedIds as $removedId) {
+            $this->refreshOfficerStatus($removedId);
+        }
+
+        $kolaboratorNames = User::whereIn('id', $newIds)->orderBy('name')->pluck('name')->implode(', ');
+        $keterangan = $kolaboratorNames !== ''
+            ? $currentUser->name.' ('.$currentUser->jabatan.') memperbarui Tim Multi-Petugas — Kolaborator aktif: '.$kolaboratorNames.'.'
+            : $currentUser->name.' ('.$currentUser->jabatan.') memperbarui Tim Multi-Petugas (hanya PIC Utama yang tersisa).';
+
+        $tugas->recordLog(
+            action: $tugas->isAwaitingSupervisorApproval() ? 'pengajuan_lintas_bidang' : 'kolaborator',
+            status: $tugas->status,
+            keterangan: $keterangan,
+            catatan: null,
+            userId: $currentUser->id,
+        );
+
+        $msg = $tugas->isAwaitingSupervisorApproval()
+            ? "Tim multi-petugas diperbarui dan menunggu persetujuan {$tugas->jabatan_atasan_penyetuju} karena melibatkan petugas lintas bidang."
+            : 'Tim multi-petugas pelaksana berhasil diperbarui.';
+
+        return redirect()->route('tugas.show', $tugas->id)->with('success', $msg);
+    }
+
+    /**
+     * Supervisor (Kepala Sub Bagian, Panitera Muda, or Admin) approves or rejects a cross-unit delegation.
+     */
+    public function tanggapiPersetujuanAtasan(Request $request, Tugas $tugas): RedirectResponse
+    {
+        /** @var User $currentUser */
+        $currentUser = Auth::user();
+
+        if (! $tugas->canApproveCrossUnit($currentUser)) {
+            return redirect()->route('tugas.show', $tugas->id)->with(
+                'error',
+                'Anda tidak memiliki wewenang untuk memverifikasi persetujuan delegasi lintas bidang ini (khusus '.($tugas->jabatan_atasan_penyetuju ?? 'Atasan Unit Terkait').' atau Admin).'
+            );
+        }
+
+        $validated = $request->validate([
+            'keputusan' => ['required', 'in:setujui,tolak'],
+            'catatan_persetujuan_atasan' => ['nullable', 'string', 'max:1000'],
+        ], [
+            'keputusan.required' => 'Pilih keputusan persetujuan delegasi.',
+            'keputusan.in' => 'Keputusan persetujuan tidak valid.',
+        ]);
+
+        $catatan = ! empty($validated['catatan_persetujuan_atasan']) ? trim($validated['catatan_persetujuan_atasan']) : null;
+        $delegator = $tugas->admin;
+
+        if ($validated['keputusan'] === 'setujui') {
+            $tugas->status = 'Didelegasikan';
+            $tugas->status_persetujuan_atasan = 'Disetujui';
+            $tugas->disetujui_atasan_oleh = $currentUser->id;
+            $tugas->tanggal_persetujuan_atasan = now();
+            $tugas->catatan_persetujuan_atasan = $catatan;
+            $tugas->save();
+
+            $assignedOfficers = $tugas->allPetugas();
+            if ($assignedOfficers->isNotEmpty()) {
+                User::whereIn('id', $assignedOfficers->pluck('id')->all())->update(['status' => 'Sedang Bertugas']);
+
+                $officerTargets = $assignedOfficers->reject(fn (User $u): bool => $u->id === $currentUser->id)->values();
+                if ($officerTargets->isNotEmpty()) {
+                    Notification::send($officerTargets, new TugasNotification(
+                        tugas: $tugas,
+                        sender: $delegator ?? $currentUser,
+                        type: 'tugas_baru',
+                        catatan: $tugas->deskripsi,
+                    ));
+                }
+            }
+
+            $tugas->recordLog(
+                action: 'persetujuan_atasan_disetujui',
+                status: 'Didelegasikan',
+                keterangan: 'Delegasi lintas bidang diverifikasi dan disetujui oleh '.$currentUser->name.' ('.$currentUser->jabatan.'). Tugas resmi diteruskan kepada pelaksana.',
+                catatan: $catatan,
+                userId: $currentUser->id,
+            );
+
+            if ($delegator && $delegator->id !== $currentUser->id) {
+                $delegator->notify(new TugasNotification(
+                    tugas: $tugas,
+                    sender: $currentUser,
+                    type: 'persetujuan_lintas_bidang_disetujui',
+                    catatan: $catatan,
+                ));
+            }
+
+            return redirect()->route('tugas.show', $tugas->id)->with('success', 'Delegasi lintas bidang disetujui dan resmi diteruskan kepada petugas pelaksana.');
+        }
+
+        // Reject cross-unit delegation
+        $tugas->status = 'Ditolak Atasan';
+        $tugas->status_persetujuan_atasan = 'Ditolak';
+        $tugas->disetujui_atasan_oleh = $currentUser->id;
+        $tugas->tanggal_persetujuan_atasan = now();
+        $tugas->catatan_persetujuan_atasan = $catatan;
+        $tugas->save();
+
+        $tugas->recordLog(
+            action: 'persetujuan_atasan_ditolak',
+            status: 'Ditolak Atasan',
+            keterangan: 'Delegasi lintas bidang ditolak oleh '.$currentUser->name.' ('.$currentUser->jabatan.').',
+            catatan: $catatan,
+            userId: $currentUser->id,
+        );
+
+        if ($delegator && $delegator->id !== $currentUser->id) {
+            $delegator->notify(new TugasNotification(
+                tugas: $tugas,
+                sender: $currentUser,
+                type: 'persetujuan_lintas_bidang_ditolak',
+                catatan: $catatan,
+            ));
+        }
+
+        return redirect()->route('tugas.show', $tugas->id)->with('success', 'Delegasi lintas bidang telah ditolak dan pemberi tugas telah diberi notifikasi.');
     }
 
     /**
@@ -861,7 +1756,7 @@ class TugasController extends Controller
             return redirect()->route('tugas.index')->with('error', 'Anda tidak memiliki wewenang untuk menghapus tugas ini.');
         }
 
-        $petugasId = $tugas->petugas_id;
+        $affectedOfficerIds = $tugas->allPetugas()->pluck('id')->map(fn ($id): int => (int) $id)->all();
 
         if ($tugas->file_tugas) {
             Storage::disk('public')->delete($tugas->file_tugas);
@@ -870,15 +1765,15 @@ class TugasController extends Controller
             Storage::disk('public')->delete($tugas->file_evidence);
         }
 
+        $diskusiFiles = $tugas->diskusi()->whereNotNull('file_path')->pluck('file_path');
+        foreach ($diskusiFiles as $diskusiFile) {
+            Storage::disk('public')->delete($diskusiFile);
+        }
+
         $tugas->delete();
 
-        // Check if officer still has other active tasks
-        $activeCount = Tugas::where('petugas_id', $petugasId)
-            ->where('status', '!=', 'Selesai')
-            ->count();
-
-        if ($activeCount === 0) {
-            User::where('id', $petugasId)->update(['status' => 'Belum Ditugaskan']);
+        foreach ($affectedOfficerIds as $officerId) {
+            $this->refreshOfficerStatus($officerId);
         }
 
         return redirect()->route('tugas.index')->with('success', 'Data tugas berhasil dihapus.');
@@ -909,7 +1804,10 @@ class TugasController extends Controller
                 $query->where('petugas_id', $request->query('petugas_id'));
             }
         } else {
-            $query->where('petugas_id', $currentUser->id);
+            $query->where(function ($q) use ($currentUser): void {
+                $q->where('petugas_id', $currentUser->id)
+                    ->orWhereHas('kolaborator', fn ($k) => $k->where('users.id', $currentUser->id));
+            });
         }
 
         if ($request->filled('klasifikasi')) {
@@ -983,7 +1881,10 @@ class TugasController extends Controller
                 $filterPetugas = $selectedPetugas ? $selectedPetugas->name : $currentUser->name;
             }
         } else {
-            $query->where('petugas_id', $currentUser->id);
+            $query->where(function ($q) use ($currentUser): void {
+                $q->where('petugas_id', $currentUser->id)
+                    ->orWhereHas('kolaborator', fn ($k) => $k->where('users.id', $currentUser->id));
+            });
             $filterPetugas = $currentUser->name;
         }
 
@@ -1044,5 +1945,41 @@ class TugasController extends Controller
         }
 
         return $storedPath;
+    }
+
+    /**
+     * Refresh an officer's availability status based on remaining active tasks (primary or collaborator).
+     */
+    protected function refreshOfficerStatus(int $userId): void
+    {
+        $activeCount = Tugas::where('status', '!=', 'Selesai')
+            ->where(function ($query) use ($userId): void {
+                $query->where('petugas_id', $userId)
+                    ->orWhereHas('kolaborator', fn ($k) => $k->where('users.id', $userId));
+            })
+            ->count();
+
+        if ($activeCount === 0) {
+            User::where('id', $userId)->update(['status' => 'Belum Ditugaskan']);
+        }
+    }
+
+    /**
+     * Notify target-unit supervisors (Kepala Sub Bagian or Panitera Muda) to approve a cross-unit delegation.
+     */
+    protected function notifyCrossUnitApprovers(Tugas $tugas, User $delegator, string $approverRole): void
+    {
+        $approvers = User::where('jabatan', $approverRole)
+            ->where('id', '!=', $delegator->id)
+            ->get();
+
+        if ($approvers->isNotEmpty()) {
+            Notification::send($approvers, new TugasNotification(
+                tugas: $tugas,
+                sender: $delegator,
+                type: 'persetujuan_lintas_bidang',
+                catatan: $tugas->deskripsi,
+            ));
+        }
     }
 }

@@ -78,7 +78,19 @@ class AuthController extends Controller
             'captcha_check.accepted' => 'Silakan centang verifikasi keamanan "Saya bukan robot" terlebih dahulu.',
         ]);
 
-        if (Auth::attempt(['nip' => $credentials['nip'], 'password' => $credentials['password']], $request->boolean('remember'))) {
+        $identifier = trim($credentials['nip']);
+        $remember = $request->boolean('remember');
+        $authenticated = false;
+
+        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+            $authenticated = Auth::attempt(['email' => $identifier, 'password' => $credentials['password']], $remember);
+        }
+
+        if (! $authenticated) {
+            $authenticated = Auth::attempt(['nip' => $identifier, 'password' => $credentials['password']], $remember);
+        }
+
+        if ($authenticated) {
             RateLimiter::clear($throttleKey);
             $request->session()->forget('login_captcha_token');
             $request->session()->regenerate();
@@ -90,7 +102,7 @@ class AuthController extends Controller
 
         return back()
             ->withErrors([
-                'nip' => 'NIP atau password yang Anda masukkan salah.',
+                'nip' => 'NIP / Email atau password yang Anda masukkan salah.',
             ])
             ->onlyInput('nip');
     }

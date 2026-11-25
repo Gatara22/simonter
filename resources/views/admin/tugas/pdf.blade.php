@@ -93,6 +93,7 @@
         .badge-menunggu { background-color: #ffc107; color: #212529; }
         .badge-selesai { background-color: #28a745; color: #fff; }
         .badge-revisi { background-color: #dc3545; color: #fff; }
+        .badge-hold { background-color: #475569; color: #fff; }
         .signature-section {
             width: 100%;
             margin-top: 20px;
@@ -193,6 +194,8 @@
                             <span class="badge badge-didelegasikan">Didelegasikan</span>
                         @elseif($t->status === 'Sedang Dikerjakan')
                             <span class="badge badge-proses">Dikerjakan</span>
+                        @elseif($t->status === 'HOLD')
+                            <span class="badge badge-hold">HOLD</span>
                         @elseif($t->status === 'Menunggu Konfirmasi')
                             <span class="badge badge-menunggu">Menunggu Konfirmasi</span>
                         @elseif($t->status === 'Selesai')
@@ -220,7 +223,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="8" class="text-center" style="padding: 15px; color: #888;">Tidak ada data tugas pada periode yang dipilih.</td>
+                    <td colspan="9" class="text-center" style="padding: 15px; color: #888;">Tidak ada data tugas pada periode yang dipilih.</td>
                 </tr>
             @endforelse
         </tbody>

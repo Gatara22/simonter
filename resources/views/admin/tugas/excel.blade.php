@@ -100,7 +100,7 @@
                 </tr>
             @empty
                 <tr>
-                    <td colspan="10" class="text-center" style="padding: 20px;">Tidak ada data tugas pada periode yang dipilih.</td>
+                    <td colspan="11" class="text-center" style="padding: 20px;">Tidak ada data tugas pada periode yang dipilih.</td>
                 </tr>
             @endforelse
         </tbody>

@@ -31,74 +31,87 @@
         </div>
     @endif
 
-    <!-- Mini Statistics Cards -->
+    <!-- Mini Statistics Cards (Clickable Quick Filters) -->
     <div class="row">
         <!-- Total Tasks -->
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Tugas</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['total'] }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
+            <a href="{{ route('tugas.index', array_filter(['klasifikasi' => $activeKlasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-primary shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Tugas</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['total'] }}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- Didelegasikan / Proses -->
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Didelegasikan / Berjalan</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['didelegasikan'] }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-spinner fa-2x text-gray-300"></i>
+            <a href="{{ route('tugas.index', array_filter(['status' => 'berjalan', 'klasifikasi' => $activeKlasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-info shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Didelegasikan / Berjalan</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['didelegasikan'] }}</div>
+                                @if(($stats['hold'] ?? 0) > 0)
+                                    <span class="badge badge-secondary mt-1" style="background-color: #475569; font-size: 0.68rem;">
+                                        <i class="fas fa-pause-circle mr-1"></i>{{ $stats['hold'] }} HOLD
+                                    </span>
+                                @endif
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-spinner fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- Menunggu Konfirmasi -->
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Menunggu Konfirmasi</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['menunggu'] }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-reply-all fa-2x text-gray-300"></i>
+            <a href="{{ route('tugas.index', array_filter(['status' => 'Menunggu Konfirmasi', 'klasifikasi' => $activeKlasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-warning shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Menunggu Konfirmasi</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['menunggu'] }}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-reply-all fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
         <!-- Selesai -->
         <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Tugas Selesai</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['selesai'] }}</div>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+            <a href="{{ route('tugas.index', array_filter(['status' => 'Selesai', 'klasifikasi' => $activeKlasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-success shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Tugas Selesai</div>
+                                <div class="h5 mb-0 font-weight-bold text-gray-800">{{ $stats['selesai'] }}</div>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
     </div>
 
@@ -192,6 +205,11 @@
                         Klasifikasi: {{ $activeKlasifikasi }}
                     </span>
                 @endif
+                @if(($activeDeadline ?? null) === 'mendekati')
+                    <span class="badge badge-danger ml-2 px-2 py-1">
+                        <i class="fas fa-hourglass-half mr-1"></i>Mendekati Deadline (0-2 Hari)
+                    </span>
+                @endif
             </h6>
             <div>
                 <button type="button" class="btn btn-sm btn-success" data-toggle="modal" data-target="#modalExportExcelTugas">
@@ -203,6 +221,66 @@
             </div>
          </div>
          <div class="card-body">
+            <!-- Quick Status Filter Pills -->
+            <div class="d-flex flex-wrap align-items-center justify-content-between bg-light rounded border p-2 mb-3" style="gap: 6px;">
+                <div class="d-flex flex-wrap align-items-center" style="gap: 6px;">
+                    <span class="small font-weight-bold text-gray-700 mr-1">
+                        <i class="fas fa-filter text-primary mr-1"></i> Filter Status:
+                    </span>
+                    <a href="{{ route('tugas.index', array_filter(['klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ empty($activeStatus) && empty($activePermohonan) && empty($activePersetujuanAtasan) && empty($activeDeadline) ? 'btn-primary' : 'btn-outline-secondary bg-white' }}">
+                        Semua
+                    </a>
+                    <a href="{{ route('tugas.index', array_filter(['status' => 'Didelegasikan', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeStatus ?? null) === 'Didelegasikan' ? 'btn-info' : 'btn-outline-info bg-white' }}">
+                        Didelegasikan
+                    </a>
+                    <a href="{{ route('tugas.index', array_filter(['status' => 'Sedang Dikerjakan', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeStatus ?? null) === 'Sedang Dikerjakan' ? 'btn-primary' : 'btn-outline-primary bg-white' }}">
+                        Sedang Dikerjakan
+                    </a>
+                    <a href="{{ route('tugas.index', array_filter(['status' => 'HOLD', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeStatus ?? null) === 'HOLD' ? 'btn-dark' : 'btn-outline-secondary bg-white' }}">
+                        <i class="fas fa-pause-circle mr-1"></i>HOLD ({{ $stats['hold'] ?? 0 }})
+                    </a>
+                    <a href="{{ route('tugas.index', array_filter(['status' => 'Menunggu Konfirmasi', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeStatus ?? null) === 'Menunggu Konfirmasi' ? 'btn-warning text-dark' : 'btn-outline-warning text-dark bg-white' }}">
+                        Menunggu Konfirmasi
+                    </a>
+                    <a href="{{ route('tugas.index', array_filter(['status' => 'Perlu Revisi', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeStatus ?? null) === 'Perlu Revisi' ? 'btn-danger' : 'btn-outline-danger bg-white' }}">
+                        Perlu Revisi ({{ $stats['revisi'] ?? 0 }})
+                    </a>
+                    <a href="{{ route('tugas.index', array_filter(['status' => 'Selesai', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                       class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeStatus ?? null) === 'Selesai' ? 'btn-success' : 'btn-outline-success bg-white' }}">
+                        Selesai
+                    </a>
+                    @if(($stats['pending_permohonan'] ?? 0) > 0)
+                        <a href="{{ route('tugas.index', array_filter(['permohonan' => 'menunggu', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                           class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activePermohonan ?? null) === 'menunggu' ? 'btn-warning text-dark border-dark' : 'btn-outline-warning text-dark bg-white' }}">
+                            <i class="fas fa-hand-paper mr-1"></i> Permohonan Petugas ({{ $stats['pending_permohonan'] }})
+                        </a>
+                    @endif
+                    @if(($stats['pending_persetujuan_atasan'] ?? 0) > 0)
+                        <a href="{{ route('tugas.index', array_filter(['persetujuan_atasan' => 'menunggu', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                           class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activePersetujuanAtasan ?? null) === 'menunggu' ? 'btn-warning text-dark border-dark' : 'btn-outline-warning text-dark bg-white' }}">
+                            <i class="fas fa-user-check mr-1"></i> Persetujuan Atasan ({{ $stats['pending_persetujuan_atasan'] }})
+                        </a>
+                    @endif
+                    @if(($stats['mendekati_deadline'] ?? 0) > 0 || ($activeDeadline ?? null) === 'mendekati')
+                        <a href="{{ route('tugas.index', array_filter(['deadline' => 'mendekati', 'klasifikasi' => $activeKlasifikasi ?? null])) }}"
+                           class="btn btn-xs py-1 px-2 small font-weight-bold {{ ($activeDeadline ?? null) === 'mendekati' ? 'btn-danger' : 'btn-outline-danger bg-white' }}">
+                            <i class="fas fa-hourglass-half mr-1"></i> Mendekati Deadline (0-2 Hari) ({{ $stats['mendekati_deadline'] ?? 0 }})
+                        </a>
+                    @endif
+                </div>
+                @if(!empty($activeStatus) || !empty($activePermohonan) || !empty($activePersetujuanAtasan) || !empty($activeDeadline))
+                    <a href="{{ route('tugas.index', array_filter(['klasifikasi' => $activeKlasifikasi ?? null])) }}" class="small text-danger font-weight-bold">
+                        <i class="fas fa-times-circle mr-1"></i> Reset Filter Status
+                    </a>
+                @endif
+            </div>
+
             <div class="table-responsive">
                 <table class="table table-bordered table-hover" id="dataTable" width="100%" cellspacing="0">
                     <thead class="bg-primary text-white">
@@ -232,6 +310,15 @@
                                 <td class="align-middle">
                                     <div class="font-weight-bold text-gray-900">{{ $t->judul }}</div>
                                     <small class="text-muted">{{ Str::limit($t->deskripsi, 60) }}</small>
+                                    @if($t->status_permohonan === 'Menunggu Persetujuan')
+                                        <div class="mt-1">
+                                            <span class="badge badge-warning text-dark px-2 py-1" style="font-size: 0.7rem;">
+                                                <i class="fas fa-hand-paper mr-1"></i>
+                                                Permohonan Petugas:
+                                                {{ $t->permohonan_hold && $t->permohonan_perpanjangan ? 'HOLD & Perpanjangan Waktu' : ($t->permohonan_hold ? 'HOLD Tugas' : 'Perpanjangan Waktu') }}
+                                            </span>
+                                        </div>
+                                    @endif
                                 </td>
                                 <td class="text-center align-middle">
                                     @if(($t->klasifikasi ?? 'Kesekretariatan') === 'Kepaniteraan')
@@ -249,6 +336,11 @@
                                     <td class="align-middle">
                                         <span class="font-weight-bold">{{ $t->petugas->name ?? '-' }}</span>
                                         <span class="badge badge-light border ml-1">{{ $t->petugas->jabatan ?? 'Petugas' }}</span>
+                                        @if($t->kolaborator && $t->kolaborator->count() > 0)
+                                            <span class="badge badge-info ml-1" title="Kolaborator: {{ $t->kolaborator->pluck('name')->implode(', ') }}">
+                                                <i class="fas fa-users mr-1"></i>+{{ $t->kolaborator->count() }} Kolaborator
+                                            </span>
+                                        @endif
                                         <br><small class="text-muted">NIP: {{ $t->petugas->nip ?? '-' }}</small>
                                         @if($t->admin && $t->admin_id !== Auth::id())
                                             <br><small class="text-info"><i class="fas fa-share mr-1"></i>Dari: {{ $t->admin->name }}</small>
@@ -268,6 +360,11 @@
                                             @else
                                                 <span class="badge badge-primary ml-1">Didelegasikan ke Petugas</span>
                                             @endif
+                                            @if($t->kolaborator && $t->kolaborator->count() > 0)
+                                                <span class="badge badge-info ml-1" title="Kolaborator: {{ $t->kolaborator->pluck('name')->implode(', ') }}">
+                                                    <i class="fas fa-users mr-1"></i>+{{ $t->kolaborator->count() }} Kolaborator
+                                                </span>
+                                            @endif
                                         </div>
                                     </td>
                                 @else
@@ -277,6 +374,19 @@
                                         @if($t->admin && $t->admin->jabatan)
                                             <br><small class="text-muted">{{ $t->admin->jabatan }}</small>
                                         @endif
+                                        @if($t->petugas_id !== Auth::id())
+                                            <div class="mt-1">
+                                                <span class="badge badge-info" title="Anda tergabung sebagai petugas kolaborator bersama {{ $t->petugas->name ?? '-' }}">
+                                                    <i class="fas fa-users mr-1"></i>Kolaborator (PIC: {{ $t->petugas->name ?? '-' }})
+                                                </span>
+                                            </div>
+                                        @elseif($t->kolaborator && $t->kolaborator->count() > 0)
+                                            <div class="mt-1">
+                                                <span class="badge badge-info" title="Kolaborator: {{ $t->kolaborator->pluck('name')->implode(', ') }}">
+                                                    <i class="fas fa-users mr-1"></i>+{{ $t->kolaborator->count() }} Kolaborator
+                                                </span>
+                                            </div>
+                                        @endif
                                     </td>
                                 @endif
 
@@ -285,6 +395,42 @@
                                         <i class="far fa-calendar-alt text-muted mr-1"></i>
                                         {{ $t->tanggal_mulai ? $t->tanggal_mulai->format('d/m/Y') : '-' }} s/d {{ $t->tanggal_selesai ? $t->tanggal_selesai->format('d/m/Y') : '-' }}
                                     </span>
+                                    <div class="mt-1">
+                                        @if($t->status === 'Selesai')
+                                            @if($t->isCompletedOnTime())
+                                                <span class="badge badge-success px-2 py-0" style="font-size: 0.68rem;">
+                                                    <i class="fas fa-check mr-1"></i>Tepat Waktu
+                                                </span>
+                                            @else
+                                                <span class="badge badge-warning text-dark px-2 py-0" style="font-size: 0.68rem;">
+                                                    <i class="fas fa-clock mr-1"></i>Melebihi Deadline
+                                                </span>
+                                            @endif
+                                        @elseif($t->status === 'HOLD')
+                                            <span class="badge badge-secondary px-2 py-0" style="background-color: #475569; font-size: 0.68rem;">
+                                                <i class="fas fa-pause-circle mr-1"></i>Waktu Dijeda (HOLD)
+                                            </span>
+                                        @elseif($t->tanggal_selesai)
+                                            @php
+                                                $todayStart = \Carbon\Carbon::now()->startOfDay();
+                                                $deadlineDay = $t->tanggal_selesai->copy()->startOfDay();
+                                                $daysDiff = $todayStart->diffInDays($deadlineDay, false);
+                                            @endphp
+                                            @if($daysDiff < 0)
+                                                <span class="badge badge-danger px-2 py-0" style="font-size: 0.68rem;">
+                                                    <i class="fas fa-exclamation-triangle mr-1"></i>Melewati Deadline
+                                                </span>
+                                            @elseif($daysDiff === 0)
+                                                <span class="badge badge-warning text-dark px-2 py-0" style="font-size: 0.68rem;">
+                                                    <i class="fas fa-hourglass-end mr-1"></i>Deadline Hari Ini
+                                                </span>
+                                            @elseif($daysDiff <= 2)
+                                                <span class="badge badge-warning text-dark px-2 py-0" style="font-size: 0.68rem;">
+                                                    <i class="fas fa-hourglass-half mr-1"></i>Sisa {{ $daysDiff }} Hari
+                                                </span>
+                                            @endif
+                                        @endif
+                                    </div>
                                 </td>
 
                                 <td class="text-center align-middle">
@@ -292,10 +438,19 @@
                                         <span class="badge badge-info badge-pill px-2 py-1"><i class="fas fa-clock mr-1"></i> Didelegasikan</span>
                                     @elseif($t->status === 'Sedang Dikerjakan')
                                         <span class="badge badge-primary badge-pill px-2 py-1"><i class="fas fa-spinner fa-spin mr-1"></i> Sedang Dikerjakan</span>
+                                    @elseif($t->status === 'HOLD')
+                                        <span class="badge badge-secondary badge-pill px-2 py-1" style="background-color: #475569;"><i class="fas fa-pause-circle mr-1"></i> HOLD</span>
                                     @elseif($t->status === 'Menunggu Konfirmasi')
                                         <span class="badge badge-warning badge-pill px-2 py-1 text-dark"><i class="fas fa-paper-plane mr-1"></i> Menunggu Konfirmasi</span>
                                     @elseif($t->status === 'Selesai')
                                         <span class="badge badge-success badge-pill px-2 py-1"><i class="fas fa-check-circle mr-1"></i> Selesai</span>
+                                    @elseif($t->status === 'Menunggu Persetujuan Atasan')
+                                        <span class="badge badge-warning badge-pill px-2 py-1 text-dark"><i class="fas fa-user-check mr-1"></i> Menunggu Persetujuan Atasan</span>
+                                        @if($t->jabatan_atasan_penyetuju)
+                                            <div class="small text-muted mt-1" style="font-size: 0.68rem;">Persetujuan: {{ $t->jabatan_atasan_penyetuju }}</div>
+                                        @endif
+                                    @elseif($t->status === 'Ditolak Atasan')
+                                        <span class="badge badge-danger badge-pill px-2 py-1"><i class="fas fa-ban mr-1"></i> Ditolak Atasan</span>
                                     @elseif($t->status === 'Perlu Revisi')
                                         <span class="badge badge-danger badge-pill px-2 py-1"><i class="fas fa-exclamation-triangle mr-1"></i> Perlu Revisi</span>
                                     @else
@@ -335,7 +490,7 @@
                                         @endif
 
                                         <!-- Tombol Tindak Lanjut untuk penerima tugas -->
-                                        @if(!$isAdmin && $t->petugas_id === Auth::id() && in_array($t->status, ['Didelegasikan', 'Sedang Dikerjakan', 'Perlu Revisi']))
+                                        @if(!$isAdmin && $t->isAssignedTo(Auth::id()) && in_array($t->status, ['Didelegasikan', 'Sedang Dikerjakan', 'Perlu Revisi']))
                                             <a href="{{ route('tugas.tindak-lanjut', $t->id) }}" class="btn btn-success btn-sm mr-1 mb-1" title="Tindak Lanjut & Kirim Balik">
                                                 <i class="fas fa-reply"></i>
                                             </a>
@@ -383,7 +538,13 @@
                                                         <div class="modal-body">
                                                             <div class="alert alert-light border small mb-3">
                                                                 <strong>Judul Tugas:</strong> {{ $t->judul }}<br>
-                                                                <strong>Diterima dari:</strong> {{ $t->admin->name ?? 'Admin' }}
+                                                                <strong>Diterima dari:</strong> {{ $t->admin->name ?? 'Admin' }}<br>
+                                                                <strong>Klasifikasi Otomatis:</strong>
+                                                                @if((Auth::user()->jabatan ?? '') === 'Panitera Muda')
+                                                                    <span class="badge badge-success ml-1">Kepaniteraan</span>
+                                                                @else
+                                                                    <span class="badge badge-primary ml-1">Kesekretariatan</span>
+                                                                @endif
                                                             </div>
                                                             <div class="form-group">
                                                                 <label class="font-weight-bold small text-gray-800">Pilih Petugas Pelaksana (Bisa Lebih dari 1 Orang) <span class="text-danger">*</span></label>
@@ -406,7 +567,7 @@
                                                                 <input type="date" class="form-control" name="tanggal_selesai" value="{{ $t->tanggal_selesai ? $t->tanggal_selesai->format('Y-m-d') : '' }}">
                                                             </div>
                                                             <div class="form-group mb-0">
-                                                                <label class="font-weight-bold small text-gray-800">Instruksi / Catatan Tambahan Kepala Sub Bagian (Opsional)</label>
+                                                                <label class="font-weight-bold small text-gray-800">Instruksi / Catatan Tambahan {{ Auth::user()->jabatan ?? 'Koordinator' }} (Opsional)</label>
                                                                 <textarea class="form-control" name="catatan_delegasi" rows="3" placeholder="Tambahkan arahan atau instruksi khusus untuk Petugas..."></textarea>
                                                             </div>
                                                         </div>
@@ -524,6 +685,7 @@
                                         <option value="">Semua Status</option>
                                         <option value="Didelegasikan">Didelegasikan</option>
                                         <option value="Sedang Dikerjakan">Sedang Dikerjakan</option>
+                                        <option value="HOLD">HOLD</option>
                                         <option value="Menunggu Konfirmasi">Menunggu Konfirmasi</option>
                                         <option value="Selesai">Selesai</option>
                                         <option value="Perlu Revisi">Perlu Revisi</option>
@@ -600,6 +762,7 @@
                                         <option value="">Semua Status</option>
                                         <option value="Didelegasikan">Didelegasikan</option>
                                         <option value="Sedang Dikerjakan">Sedang Dikerjakan</option>
+                                        <option value="HOLD">HOLD</option>
                                         <option value="Menunggu Konfirmasi">Menunggu Konfirmasi</option>
                                         <option value="Selesai">Selesai</option>
                                         <option value="Perlu Revisi">Perlu Revisi</option>

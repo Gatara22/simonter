@@ -41,19 +41,19 @@
 <body>
     <table>
         <tr>
-            <td colspan="7" class="kop-title">PENGADILAN AGAMA JAKARTA UTARA</td>
+            <td colspan="8" class="kop-title">PENGADILAN AGAMA JAKARTA UTARA</td>
         </tr>
         <tr>
-            <td colspan="7" class="kop-sub">SiMonter - Sistem Monitoring Evaluasi Terpadu</td>
+            <td colspan="8" class="kop-sub">SiMonter - Sistem Monitoring Evaluasi Terpadu</td>
         </tr>
         <tr>
-            <td colspan="7" style="text-align: center; font-weight: bold; font-size: 12pt;">LAPORAN DATA PENGGUNA SISTEM</td>
+            <td colspan="8" style="text-align: center; font-weight: bold; font-size: 12pt;">LAPORAN DATA PENGGUNA SISTEM</td>
         </tr>
         <tr>
-            <td colspan="7" style="text-align: center; color: #555;">Periode: {{ $periodeString ?? 'Semua Waktu' }} | Tanggal Cetak: {{ date('d/m/Y H:i') }} WIB</td>
+            <td colspan="8" style="text-align: center; color: #555;">Periode: {{ $periodeString ?? 'Semua Waktu' }} | Klasifikasi: {{ $filterKlasifikasi ?? 'Semua Klasifikasi' }} | Tanggal Cetak: {{ date('d/m/Y H:i') }} WIB</td>
         </tr>
         <tr>
-            <td colspan="7"></td>
+            <td colspan="8"></td>
         </tr>
         <thead>
             <tr>
@@ -63,6 +63,7 @@
                 <th style="width: 200px;">Email</th>
                 <th style="width: 140px;">Kontak</th>
                 <th style="width: 110px;">Jabatan</th>
+                <th style="width: 130px;">Klasifikasi</th>
                 <th style="width: 140px;">Status</th>
             </tr>
         </thead>
@@ -75,11 +76,12 @@
                     <td>{{ $u->email ?? '-' }}</td>
                     <td class="text-center text-format">{{ $u->kontak ?? '-' }}</td>
                     <td class="text-center">{{ $u->jabatan }}</td>
+                    <td class="text-center">{{ $u->klasifikasi ?? '-' }}</td>
                     <td class="text-center">{{ $u->status }}</td>
                 </tr>
             @empty
                 <tr>
-                    <td colspan="7" class="text-center" style="padding: 20px;">Tidak ada data pengguna pada periode yang dipilih.</td>
+                    <td colspan="8" class="text-center" style="padding: 20px;">Tidak ada data pengguna pada periode yang dipilih.</td>
                 </tr>
             @endforelse
         </tbody>

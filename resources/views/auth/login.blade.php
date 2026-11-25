@@ -10,6 +10,7 @@
     <meta name="author" content="Pengadilan Agama Jakarta Utara">
 
     <title>SIMONTER | Login</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('images/simonter-s-favicon.svg') }}">
 
     <!-- Custom fonts for this template-->
     <link href="{{ asset('sbadmin2/vendor/fontawesome-free/css/all.min.css') }}" rel="stylesheet" type="text/css">
@@ -87,6 +88,47 @@
         .captcha-widget-box.is-verified .captcha-brand-badge .shield-icon {
             color: #10b981;
         }
+        .login-card-enhanced {
+            border-radius: 1.25rem !important;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
+        }
+        .login-brand-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            filter: drop-shadow(0 12px 24px rgba(15, 23, 42, 0.25));
+            margin-bottom: 0.9rem;
+            transition: transform 0.25s ease;
+        }
+        .login-brand-badge:hover {
+            transform: scale(1.06) rotate(-3deg);
+        }
+        .password-input-wrap {
+            position: relative;
+        }
+        .password-toggle-btn {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: transparent;
+            border: none;
+            color: #64748b;
+            cursor: pointer;
+            padding: 4px 6px;
+            z-index: 5;
+        }
+        .password-toggle-btn:hover {
+            color: #2563eb;
+        }
+        .btn-login-submit {
+            transition: transform 0.18s ease, box-shadow 0.18s ease;
+            box-shadow: 0 6px 16px rgba(37, 99, 235, 0.25);
+        }
+        .btn-login-submit:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 10px 22px rgba(37, 99, 235, 0.35);
+        }
     </style>
 
 </head>
@@ -100,17 +142,23 @@
 
             <div class="col-xl-6 col-lg-7 col-md-9">
 
-                <div class="card o-hidden border-0 shadow-lg my-5">
+                <div class="card o-hidden border-0 shadow-lg my-5 login-card-enhanced">
                     <div class="card-body p-0">
                         <!-- Nested Row within Card Body -->
                         <div class="row">
 
                             <div class="col-12">
-                                <div class="p-5">
-                                    <div class="text-center">
-                                        <h1 class="h4 text-gray-900 mb-4">
-                                            <i class="fas fa-tasks mr-2"></i>SiMonter | Login
+                                <div class="p-4 p-sm-5">
+                                    <div class="text-center mb-4">
+                                        <div class="login-brand-badge">
+                                            @include('partials.simonter-logo', ['size' => 72, 'variant' => 'color', 'uid' => 'login'])
+                                        </div>
+                                        <h1 class="h4 font-weight-bold text-gray-900 mb-1">
+                                            SiMonter | Login
                                         </h1>
+                                        <p class="small text-muted mb-0">
+                                            Sistem Monitoring Evaluasi Terpadu &bull; Pengadilan Agama Jakarta Utara
+                                        </p>
                                     </div>
 
                                     @if(session('success'))
@@ -143,7 +191,7 @@
                                         <div class="form-group">
                                             <input type="text"
                                                 class="form-control form-control-user @error('nip') is-invalid @enderror"
-                                                placeholder="Masukkan NIP"
+                                                placeholder="Masukkan NIP atau Alamat Email"
                                                 name="nip"
                                                 value="{{ old('nip') }}"
                                                 autofocus>
@@ -156,16 +204,31 @@
                                         </div>
 
                                         <div class="form-group">
-                                            <input type="password"
-                                                class="form-control form-control-user @error('password') is-invalid @enderror"
-                                                placeholder="Masukkan Password"
-                                                name="password">
+                                            <div class="password-input-wrap">
+                                                <input type="password"
+                                                    id="loginPasswordInput"
+                                                    class="form-control form-control-user pr-5 @error('password') is-invalid @enderror"
+                                                    placeholder="Masukkan Password"
+                                                    name="password">
+                                                <button type="button" class="password-toggle-btn" id="toggleLoginPassword" title="Tampilkan / Sembunyikan Password" aria-label="Tampilkan Password">
+                                                    <i class="fas fa-eye" id="toggleLoginPasswordIcon"></i>
+                                                </button>
+                                            </div>
 
                                             @error('password')
                                                 <small class="text-danger ml-3 d-block mt-1">
                                                     {{ $message }}
                                                 </small>
                                             @enderror
+                                        </div>
+
+                                        <div class="form-group mb-3 ml-2">
+                                            <div class="custom-control custom-checkbox small">
+                                                <input type="checkbox" class="custom-control-input" id="rememberCheck" name="remember" value="1" {{ old('remember') ? 'checked' : '' }}>
+                                                <label class="custom-control-label text-gray-700 font-weight-bold" for="rememberCheck">
+                                                    Ingat Saya di perangkat ini
+                                                </label>
+                                            </div>
                                         </div>
 
                                         <!-- Security Patch Captcha Widget ("Saya bukan robot") -->
@@ -210,8 +273,8 @@
                                             @enderror
                                         </div>
 
-                                        <button type="submit" class="btn btn-primary btn-user btn-block font-weight-bold">
-                                            Login
+                                        <button type="submit" class="btn btn-primary btn-user btn-block font-weight-bold btn-login-submit">
+                                            <i class="fas fa-sign-in-alt mr-1"></i> Login
                                         </button>
                                     </form>
                                     <hr>
@@ -281,6 +344,20 @@
                         if (checkIcon) checkIcon.classList.add('d-none');
                         if (statusLabel) statusLabel.textContent = 'Saya bukan robot';
                         if (subLabel) subLabel.textContent = 'Klik untuk verifikasi keamanan anti-brute force';
+                    }
+                });
+            }
+
+            const togglePasswordBtn = document.getElementById('toggleLoginPassword');
+            const passwordInput = document.getElementById('loginPasswordInput');
+            const togglePasswordIcon = document.getElementById('toggleLoginPasswordIcon');
+            if (togglePasswordBtn && passwordInput) {
+                togglePasswordBtn.addEventListener('click', function () {
+                    const isHidden = passwordInput.getAttribute('type') === 'password';
+                    passwordInput.setAttribute('type', isHidden ? 'text' : 'password');
+                    if (togglePasswordIcon) {
+                        togglePasswordIcon.classList.toggle('fa-eye', !isHidden);
+                        togglePasswordIcon.classList.toggle('fa-eye-slash', isHidden);
                     }
                 });
             }

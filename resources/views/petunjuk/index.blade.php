@@ -811,10 +811,16 @@
                         <td class="text-center text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Ya (Tugas Saya)</td>
                     </tr>
                     <tr>
-                        <td class="font-weight-bold">Verifikasi Tugas (Setujui Selesai / Minta Revisi)</td>
+                        <td class="font-weight-bold">Verifikasi Tugas (Setujui Selesai / Minta Revisi / Status HOLD)</td>
                         <td class="text-center text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Seluruh Tugas</td>
                         <td class="text-center text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Tugas yang Didelegasikannya</td>
-                        <td class="text-center text-muted"><i class="fas fa-times-circle mr-1"></i> Tidak Tersedia</td>
+                        <td class="text-center text-muted"><i class="fas fa-times-circle mr-1"></i> Tidak Tersedia (Hanya Pengajuan Ceklist)</td>
+                    </tr>
+                    <tr>
+                        <td class="font-weight-bold">Panel Ceklist Permohonan (Minta HOLD / Edit Perpanjangan Deadline)</td>
+                        <td class="text-center text-primary font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Menanggapi Permohonan</td>
+                        <td class="text-center text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Mengajukan &amp; Menanggapi</td>
+                        <td class="text-center text-success font-weight-bold"><i class="fas fa-check-circle mr-1"></i> Mengajukan Ceklist ke Pemberi Tugas</td>
                     </tr>
                     <tr>
                         <td class="font-weight-bold">Buka Kembali (Reopen) Tugas Berstatus Closed</td>
@@ -951,10 +957,11 @@
                 </div>
                 <div class="col-md-4 mb-2 mb-md-0">
                     <div class="p-2 bg-light rounded border h-100">
-                        <div class="font-weight-bold text-gray-700 mb-2">5 Status Siklus Tugas:</div>
+                        <div class="font-weight-bold text-gray-700 mb-2">6 Status Siklus Tugas:</div>
                         <div class="d-flex flex-wrap" style="gap: 6px;">
                             <span class="badge badge-primary px-2 py-1">Didelegasikan</span>
                             <span class="badge badge-info px-2 py-1">Sedang Dikerjakan</span>
+                            <span class="badge badge-secondary px-2 py-1" style="background-color: #475569;">HOLD</span>
                             <span class="badge badge-warning text-dark px-2 py-1">Menunggu Konfirmasi</span>
                             <span class="badge badge-danger px-2 py-1">Perlu Revisi</span>
                             <span class="badge badge-success px-2 py-1">Selesai</span>
@@ -1067,13 +1074,16 @@
 
                         <div class="sop-timeline-item">
                             <div class="sop-timeline-dot">3</div>
-                            <h6 class="font-weight-bold text-gray-900 mb-1">Memeriksa Evidence &amp; Memverifikasi Tugas (Status: Menunggu Konfirmasi)</h6>
+                            <h6 class="font-weight-bold text-gray-900 mb-1">Memeriksa Evidence, Menanggapi Permohonan Petugas &amp; Status HOLD</h6>
                             <p class="small text-muted mb-2">
-                                Saat pelaksana mengirimkan laporan tindak lanjut, Anda akan menerima notifikasi hijau/biru. Klik notifikasi tersebut atau buka <strong>Detail Tugas</strong>:
+                                Saat pelaksana mengirimkan laporan tindak lanjut atau mengajukan <strong>Ceklist Permohonan</strong> (<em>HOLD Tugas</em> / <em>Perpanjangan Masa Pengerjaan</em>), buka halaman <strong>Detail Tugas</strong>:
                             </p>
                             <ul class="small text-muted mb-0 pl-3">
                                 <li>Periksa <strong>Catatan Laporan Petugas</strong>, unduh <strong>Berkas Evidence</strong>, atau buka <strong>Link Evidence</strong> yang dilampirkan.</li>
-                                <li>Pada panel <strong>Verifikasi Hasil Tindak Lanjut</strong>, pilih <strong>Tandai Selesai (Verified)</strong> jika hasil kerja sudah tepat, atau pilih <strong>Kembalikan untuk Revisi</strong> disertai catatan koreksi apabila masih ada kekurangan.</li>
+                                <li>Jika pelaksana mengajukan ceklist permohonan, gunakan panel <strong>Tanggapi Permohonan Ceklist dari Petugas</strong> untuk menyetujui status <strong>HOLD</strong> / memperpanjang batas waktu selesai, atau klik <strong>Tolak Permohonan</strong>.</li>
+                                <li>Gunakan tombol <strong>Set Status HOLD</strong> kapan saja apabila pekerjaan perlu ditunda sementara (selama berstatus HOLD, durasi tidak dihitung dalam keterlambatan performa).</li>
+                                <li>Pada panel <strong>Verifikasi &amp; Kendali Status Pemberi Tugas</strong>, pilih <strong>Setujui &amp; Tandai Selesai</strong> jika hasil kerja sudah tepat, atau <strong>Minta Revisi</strong> disertai catatan koreksi. Tugas hanya dapat di-<em>Closed</em> (Selesai) secara resmi oleh <strong>Pemberi Tugas (Author) / Admin</strong>.</li>
+                                <li>Gunakan tombol <strong>Kelola Multi Petugas</strong> dan <strong>Ruang Diskusi &amp; Chat Progres Pekerjaan</strong> pada Detail Tugas untuk berkolaborasi lintas petugas dan berdiskusi tanpa harus mengunggah evidence formal terlebih dahulu.</li>
                             </ul>
                         </div>
 
@@ -1157,9 +1167,9 @@
 
                         <div class="sop-timeline-item">
                             <div class="sop-timeline-dot" style="background: #0d9488;">3</div>
-                            <h6 class="font-weight-bold text-gray-900 mb-1">Memverifikasi Hasil Kerja Petugas &amp; Buka Kembali Tugas</h6>
+                            <h6 class="font-weight-bold text-gray-900 mb-1">Memverifikasi Hasil Kerja Petugas, Status HOLD &amp; Buka Kembali Tugas</h6>
                             <p class="small text-muted mb-0">
-                                Untuk seluruh tugas yang Anda delegasikan kepada Petugas (dimana Anda tercatat sebagai <em>Pendelegasi</em>), Anda berwenang penuh memeriksa bukti <em>evidence</em> dari Petugas, memberikan keputusan <strong>Selesai (Verified)</strong> atau <strong>Perlu Revisi</strong>, serta menggunakan fitur <strong>Buka Kembali (Reopen)</strong> jika tugas yang sudah selesai memerlukan koreksi ulang.
+                                Untuk seluruh tugas yang Anda delegasikan kepada Petugas (dimana Anda tercatat sebagai <em>Pemberi Tugas</em>), Anda berwenang penuh memeriksa bukti <em>evidence</em> dari Petugas, menyetujui atau menolak <strong>Permohonan Ceklist HOLD / Perpanjangan Deadline</strong> dari Petugas, menetapkan status <span class="badge badge-secondary" style="background-color:#475569;">HOLD</span> apabila terdapat kendala penundaan eksternal, memberikan keputusan <strong>Selesai (Verified)</strong> atau <strong>Perlu Revisi</strong>, serta menggunakan fitur <strong>Buka Kembali (Reopen)</strong> jika tugas yang sudah selesai memerlukan koreksi ulang.
                             </p>
                         </div>
                     </div>
@@ -1206,6 +1216,14 @@
 
                         <div class="sop-timeline-item">
                             <div class="sop-timeline-dot bg-info">3</div>
+                            <h6 class="font-weight-bold text-gray-900 mb-1">Mengajukan Permohonan HOLD / Perpanjangan Waktu (Panel Ceklist Petugas)</h6>
+                            <p class="small text-muted mb-0">
+                                Apabila di tengah pengerjaan terdapat kendala teknis/eksternal sehingga pekerjaan harus ditunda sementara atau membutuhkan tambahan waktu, buka <strong>Detail Tugas</strong> lalu gunakan <strong>Panel Ceklist Permohonan Petugas kepada Pemberi Tugas</strong>. Centang <strong>Meminta HOLD Tugas</strong> dan/atau <strong>Meminta Edit Tugas untuk Memperpanjang Masa Pengerjaan (Deadline)</strong> beserta usulan tanggal baru dan alasan yang jelas. Status <span class="badge badge-secondary" style="background-color:#475569;">HOLD</span> hanya dapat diaktifkan oleh Admin atau Pemberi Tugas.
+                            </p>
+                        </div>
+
+                        <div class="sop-timeline-item">
+                            <div class="sop-timeline-dot bg-info">4</div>
                             <h6 class="font-weight-bold text-gray-900 mb-1">Mengirimkan Laporan Tindak Lanjut &amp; Bukti Kerja (Evidence)</h6>
                             <p class="small text-muted mb-2">
                                 Setelah tugas selesai dikerjakan, klik tombol hijau <strong>Tindak Lanjut / Kirim Evidence</strong>:
@@ -1219,7 +1237,7 @@
                         </div>
 
                         <div class="sop-timeline-item mb-0">
-                            <div class="sop-timeline-dot bg-info">4</div>
+                            <div class="sop-timeline-dot bg-info">5</div>
                             <h6 class="font-weight-bold text-gray-900 mb-1">Menangani Permintaan Revisi atau Tugas yang Dibuka Kembali (Reopen)</h6>
                             <p class="small text-muted mb-0">
                                 Jika pemberi tugas mengembalikan pekerjaan dengan status <span class="badge badge-danger">Perlu Revisi</span> atau membuka kembali tugas yang telah ditutup, baca dengan saksama <strong>Catatan Admin / Pendelegasi</strong> yang tampil pada kotak peringatan di halaman Detail Tugas, perbaiki hasil kerja Anda, lalu kirimkan kembali <em>evidence</em> terbaru melalui formulir Tindak Lanjut.
@@ -1331,9 +1349,13 @@
                     <div class="text-warning font-weight-bold mb-1">// 2. Skor Peringkat Pemberi Tugas (Admin/Kasubbag/Panmud)</div>
                     <div>Skor Pemberi = (Tugas Diverifikasi &times; 10) + (Skor Kecepatan Respon &times; 0.35) + (First-Time Closed % &times; 0.25)</div>
                     <hr style="border-color: rgba(255,255,255,0.15);" class="my-2">
-                    <div class="text-warning font-weight-bold mb-1">// 3. Kriteria Tepat Waktu &amp; Response Time Verifikasi</div>
-                    <div>On-Time Pelaksana: Kirim Evidence &le; Tanggal Deadline (23:59:59 WIB)</div>
+                    <div class="text-warning font-weight-bold mb-1">// 3. Kriteria Tepat Waktu, Response Time &amp; Pengecualian Status HOLD</div>
+                    <div>Durasi Kerja Efektif = (Tanggal Mulai &rarr; Closed) &minus; Total Durasi HOLD</div>
+                    <div>On-Time Pelaksana: (Waktu Selesai &minus; Durasi HOLD) &le; Tanggal Deadline (23:59:59 WIB)</div>
                     <div>Response Time Pemberi: Selisih Jam dari Kirim Balik &rarr; Keputusan Verifikasi (Closed / Revisi)</div>
+                    <hr style="border-color: rgba(255,255,255,0.15);" class="my-2">
+                    <div class="text-warning font-weight-bold mb-1">// 4. Kredit Tugas Kolaborasi Multi-Petugas</div>
+                    <div>Setiap petugas terdelegasi (PIC Utama / Kolaborator) dengan &ge; 1 komen atau lampiran di Ruang Diskusi dihitung mengerjakan 1 tugas dalam matriks &amp; peringkat kinerja.</div>
                 </div>
 
                 <div class="small text-light" style="opacity: 0.85;">
@@ -1498,6 +1520,57 @@
             <div id="faqCollapse4" class="collapse" aria-labelledby="faqHeading4" data-parent="#faqAccordion">
                 <div class="card-body small text-muted bg-light">
                     Demi integritas data kepegawaian, perubahan <strong>Nama Lengkap, NIP, Email, dan Jabatan</strong> hanya dapat dilakukan oleh <strong>Administrator</strong> melalui menu <em>Data User</em>. Adapun <strong>Foto Profil, Nomor Telepon/WA, dan Password</strong> dapat Anda ubah sendiri kapan saja melalui menu <em>Pengaturan Akun</em>.
+                </div>
+            </div>
+        </div>
+
+        <!-- FAQ 5 -->
+        <div class="card border mb-2 shadow-sm" style="border-radius: 0.75rem; overflow: hidden;">
+            <div class="card-header bg-white py-3" id="faqHeading5">
+                <h6 class="mb-0">
+                    <button class="btn btn-link text-left text-gray-900 font-weight-bold p-0 w-100 d-flex justify-content-between align-items-center text-decoration-none collapsed" type="button" data-toggle="collapse" data-target="#faqCollapse5">
+                        <span>5. Bagaimana cara kerja status HOLD dan cara Petugas mengajukan permohonan HOLD atau perpanjangan deadline?</span>
+                        <i class="fas fa-chevron-down text-primary small"></i>
+                    </button>
+                </h6>
+            </div>
+            <div id="faqCollapse5" class="collapse" aria-labelledby="faqHeading5" data-parent="#faqAccordion">
+                <div class="card-body small text-muted bg-light">
+                    Status <span class="badge badge-secondary" style="background-color:#475569;">HOLD</span> hanya dapat diberikan oleh <strong>Admin</strong> atau <strong>Pemberi Tugas</strong>. Selama tugas berada pada status HOLD, durasi penundaan tidak dihitung apabila terjadi keterlambatan performa saat tugas dinyatakan <em>Selesai (Closed)</em>. Petugas pelaksana dapat mengajukan permohonan melalui <strong>Panel Ceklist Permohonan Petugas</strong> pada halaman Detail Tugas dengan mencentang permintaan HOLD dan/atau permintaan edit perpanjangan masa pengerjaan.
+                </div>
+            </div>
+        </div>
+
+        <!-- FAQ 6 -->
+        <div class="card border mb-2 shadow-sm" style="border-radius: 0.75rem; overflow: hidden;">
+            <div class="card-header bg-white py-3" id="faqHeading6">
+                <h6 class="mb-0">
+                    <button class="btn btn-link text-left text-gray-900 font-weight-bold p-0 w-100 d-flex justify-content-between align-items-center text-decoration-none collapsed" type="button" data-toggle="collapse" data-target="#faqCollapse6">
+                        <span>6. Bagaimana cara kerja Multi-Petugas &amp; Chat Progres Pekerjaan di Detail Tugas?</span>
+                        <i class="fas fa-chevron-down text-primary small"></i>
+                    </button>
+                </h6>
+            </div>
+            <div id="faqCollapse6" class="collapse" aria-labelledby="faqHeading6" data-parent="#faqAccordion">
+                <div class="card-body small text-muted bg-light">
+                    Pemberi Tugas / Admin dapat menunjuk beberapa petugas dalam <strong>1 Tugas Kolaborasi Multi-Petugas</strong> (saat membuat delegasi atau lewat tombol <em>Kelola Multi Petugas</em> di Detail Tugas). Seluruh tim dan Pemberi Tugas dapat saling berkomunikasi melalui <strong>Ruang Diskusi &amp; Chat Progres Pekerjaan</strong> serta mengunggah file tanpa wajib upload evidence formal. File yang diunggah otomatis tampil sebagai <strong>link URL yang dapat diklik di Log Aktivitas</strong> tanpa otomatis mengubah status tugas ke <em>Menunggu Konfirmasi</em>; tugas hanya dapat di-<em>Closed (Selesai)</em> oleh <strong>Pemberi Tugas (Author) atau Admin</strong>.
+                </div>
+            </div>
+        </div>
+
+        <!-- FAQ 7 -->
+        <div class="card border mb-2 shadow-sm" style="border-radius: 0.75rem; overflow: hidden;">
+            <div class="card-header bg-white py-3" id="faqHeading7">
+                <h6 class="mb-0">
+                    <button class="btn btn-link text-left text-gray-900 font-weight-bold p-0 w-100 d-flex justify-content-between align-items-center text-decoration-none collapsed" type="button" data-toggle="collapse" data-target="#faqCollapse7">
+                        <span>7. Bagaimana aturan delegasi tugas lintas bidang antara Kesekretariatan dan Kepaniteraan?</span>
+                        <i class="fas fa-chevron-down text-primary small"></i>
+                    </button>
+                </h6>
+            </div>
+            <div id="faqCollapse7" class="collapse" aria-labelledby="faqHeading7" data-parent="#faqAccordion">
+                <div class="card-body small text-muted bg-light">
+                    Apabila pendelegasi unit <strong>Kesekretariatan</strong> membuat tugas untuk petugas unit <strong>Kepaniteraan</strong>, tugas otomatis masuk status <span class="badge badge-warning text-dark">Menunggu Persetujuan Atasan</span> dan memerlukan verifikasi &amp; persetujuan dari <strong>Panitera Muda</strong> (atau Admin). Sebaliknya, jika pendelegasi unit <strong>Kepaniteraan</strong> menugaskan petugas unit <strong>Kesekretariatan</strong>, tugas memerlukan verifikasi &amp; persetujuan dari <strong>Kepala Sub Bagian</strong> (atau Admin) sebelum resmi diteruskan kepada petugas pelaksana.
                 </div>
             </div>
         </div>

@@ -21,7 +21,7 @@ class DashboardController extends Controller
         $isAdmin = $currentUser->jabatan === 'Admin';
         $isKasubbag = in_array($currentUser->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true);
 
-        // 1. Filter Periode
+        // 1. Filter Periode & Klasifikasi
         $periode = $request->query('periode', 'semua');
         $periodeLabel = 'Semua Waktu';
         $startDate = null;
@@ -41,10 +41,19 @@ class DashboardController extends Controller
             $periodeLabel = 'Tahun Ini ('.Carbon::now()->format('Y').')';
         }
 
-        // Base query closure with period filtering
-        $applyPeriod = function ($query) use ($startDate, $endDate) {
+        $klasifikasi = $request->query('klasifikasi');
+        if (! in_array($klasifikasi, ['Kesekretariatan', 'Kepaniteraan'], true)) {
+            $klasifikasi = null;
+        }
+        $klasifikasiLabel = $klasifikasi ?? 'Semua Klasifikasi';
+
+        // Base query closure with period & classification filtering
+        $applyPeriod = function ($query) use ($startDate, $endDate, $klasifikasi): void {
             if ($startDate && $endDate) {
                 $query->whereBetween('tanggal_mulai', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+            }
+            if ($klasifikasi !== null) {
+                $query->where('klasifikasi', $klasifikasi);
             }
         };
 
@@ -52,28 +61,26 @@ class DashboardController extends Controller
             // Admin queries: Performance of all officers & delegators
             $tugasQuery = Tugas::query();
             $applyPeriod($tugasQuery);
-            $allTugasInPeriod = $tugasQuery->with(['petugas', 'admin', 'logs'])->get();
+            $allTugasInPeriod = $tugasQuery->with(['petugas', 'admin', 'kolaborator', 'diskusi', 'logs'])->get();
 
             $totalTugas = $allTugasInPeriod->count();
             $tugasMenunggu = $allTugasInPeriod->where('status', 'Menunggu Konfirmasi')->count();
             $tugasSelesai = $allTugasInPeriod->where('status', 'Selesai')->count();
             $tugasBerjalan = $allTugasInPeriod->whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])->count();
             $tugasPerluRevisi = $allTugasInPeriod->where('status', 'Perlu Revisi')->count();
+            $tugasHold = $allTugasInPeriod->where('status', 'HOLD')->count();
 
-            // Calculate duration and on-time statistics for all completed tasks
+            // Calculate duration and on-time statistics for all completed tasks (excluding HOLD duration)
             $completedTasks = $allTugasInPeriod->where('status', 'Selesai');
             $durasiTotalHari = 0;
             $tugasTepatWaktu = 0;
             $tugasTerlambat = 0;
 
             foreach ($completedTasks as $t) {
-                $start = Carbon::parse($t->tanggal_mulai ?? $t->created_at);
-                $finish = Carbon::parse($t->tanggal_tindak_lanjut ?? $t->updated_at);
-                $durasi = max(1, round($start->floatDiffInDays($finish), 1));
+                $durasi = $t->getEffectiveWorkingDurationDays();
                 $durasiTotalHari += $durasi;
 
-                $deadline = Carbon::parse($t->tanggal_selesai)->endOfDay();
-                if ($finish->lte($deadline)) {
+                if ($t->isCompletedOnTime()) {
                     $tugasTepatWaktu++;
                 } else {
                     $tugasTerlambat++;
@@ -88,7 +95,8 @@ class DashboardController extends Controller
             $petugasStats = [];
 
             foreach ($petugasList as $p) {
-                $tasksOfPetugas = $allTugasInPeriod->where('petugas_id', $p->id);
+                $tasksOfPetugas = $allTugasInPeriod->filter(fn (Tugas $t): bool => $t->countsTowardOfficerPerformance($p->id));
+                $pKolaborasiCount = $tasksOfPetugas->filter(fn (Tugas $t): bool => $t->isCollaborative())->count();
                 $pTotal = $tasksOfPetugas->count();
                 $pSelesai = $tasksOfPetugas->where('status', 'Selesai');
                 $pSelesaiCount = $pSelesai->count();
@@ -98,13 +106,10 @@ class DashboardController extends Controller
                 $pTerlambat = 0;
 
                 foreach ($pSelesai as $t) {
-                    $start = Carbon::parse($t->tanggal_mulai ?? $t->created_at);
-                    $finish = Carbon::parse($t->tanggal_tindak_lanjut ?? $t->updated_at);
-                    $durasi = max(1, round($start->floatDiffInDays($finish), 1));
+                    $durasi = $t->getEffectiveWorkingDurationDays();
                     $pDurasiTotal += $durasi;
 
-                    $deadline = Carbon::parse($t->tanggal_selesai)->endOfDay();
-                    if ($finish->lte($deadline)) {
+                    if ($t->isCompletedOnTime()) {
                         $pTepatWaktu++;
                     } else {
                         $pTerlambat++;
@@ -137,6 +142,7 @@ class DashboardController extends Controller
                     'jabatan' => $p->jabatan,
                     'foto_url' => $p->foto_url,
                     'total_tugas' => $pTotal,
+                    'kolaborasi_count' => $pKolaborasiCount,
                     'selesai' => $pSelesaiCount,
                     'tepat_waktu' => $pTepatWaktu,
                     'terlambat' => $pTerlambat,
@@ -171,6 +177,10 @@ class DashboardController extends Controller
                     $hasRevisiLog = $logs->contains(fn ($l) => in_array($l->action, ['revisi', 'buka_kembali'], true) || $l->status === 'Perlu Revisi');
                     $hasSelesaiLog = $logs->contains(fn ($l) => $l->action === 'selesai' || $l->status === 'Selesai');
 
+                    if ($dt->status === 'HOLD' && ! $hasRevisiLog && ! $hasSelesaiLog) {
+                        continue;
+                    }
+
                     $isResponded = in_array($dt->status, ['Selesai', 'Perlu Revisi'], true) || $hasRevisiLog || $hasSelesaiLog;
                     if (! $isResponded) {
                         continue;
@@ -196,7 +206,29 @@ class DashboardController extends Controller
                         ? Carbon::parse($verifLog->created_at)
                         : Carbon::parse($dt->updated_at);
 
-                    $diffHours = max(0.1, round(abs($submitTime->floatDiffInHours($decisionTime)), 1));
+                    // Exclude any HOLD hours that occurred between submission and verification decision
+                    $holdHoursBetween = 0.0;
+                    $holdIntervalStart = null;
+                    foreach ($logs as $logEntry) {
+                        $isHoldLog = $logEntry->status === 'HOLD' || $logEntry->action === 'hold';
+                        if ($isHoldLog) {
+                            if ($holdIntervalStart === null) {
+                                $holdIntervalStart = Carbon::parse($logEntry->created_at);
+                            }
+                        } elseif ($holdIntervalStart !== null) {
+                            $holdIntervalEnd = Carbon::parse($logEntry->created_at);
+                            $overlapStart = $holdIntervalStart->greaterThan($submitTime) ? $holdIntervalStart : $submitTime;
+                            $overlapEnd = $holdIntervalEnd->lessThan($decisionTime) ? $holdIntervalEnd : $decisionTime;
+                            if ($overlapEnd->gt($overlapStart)) {
+                                $holdHoursBetween += $overlapStart->floatDiffInHours($overlapEnd);
+                            }
+                            $holdIntervalStart = null;
+                        }
+                    }
+
+                    $rawRespondHours = abs($submitTime->floatDiffInHours($decisionTime));
+                    $effectiveRespondHours = max(0.0, $rawRespondHours - $holdHoursBetween);
+                    $diffHours = max(0.1, round($effectiveRespondHours, 1));
                     $dRespondHoursTotal += $diffHours;
                 }
 
@@ -277,20 +309,23 @@ class DashboardController extends Controller
             $chartPetugasAvgDurasi = array_column($top7Petugas, 'avg_durasi');
 
             // Chart 2: Doughnut Chart Status Distribusi Ketepatan Waktu
-            $chartDoughnutLabels = ['Selesai Tepat Waktu', 'Selesai Terlambat', 'Sedang Dikerjakan', 'Menunggu Konfirmasi', 'Perlu Revisi'];
+            $chartDoughnutLabels = ['Selesai Tepat Waktu', 'Selesai Terlambat', 'Sedang Dikerjakan', 'Menunggu Konfirmasi', 'Perlu Revisi', 'HOLD'];
             $chartDoughnutData = [
                 $tugasTepatWaktu,
                 $tugasTerlambat,
                 $tugasBerjalan,
                 $tugasMenunggu,
                 $tugasPerluRevisi,
+                $tugasHold,
             ];
 
             // Chart 3: Tren Penyelesaian Tugas & Rata-rata Waktu (1 Tahun, 6 Bulan, 3 Bulan, 1 Bulan)
             $oneYearAgo = Carbon::now()->subMonths(11)->startOfMonth();
             $nowEnd = Carbon::now()->endOfMonth();
 
-            $allCompletedYear = Tugas::where('status', 'Selesai')
+            $allCompletedYear = Tugas::with('logs')
+                ->where('status', 'Selesai')
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
                 ->where(function ($q) use ($oneYearAgo, $nowEnd) {
                     $q->whereBetween('tanggal_selesai', [$oneYearAgo->format('Y-m-d'), $nowEnd->format('Y-m-d')])
                         ->orWhere(function ($q2) use ($oneYearAgo, $nowEnd) {
@@ -304,9 +339,7 @@ class DashboardController extends Controller
                 $count = $tasks->count();
                 $durasiTotal = 0;
                 foreach ($tasks as $mt) {
-                    $st = Carbon::parse($mt->tanggal_mulai ?? $mt->created_at);
-                    $fn = Carbon::parse($mt->tanggal_tindak_lanjut ?? $mt->updated_at);
-                    $durasiTotal += max(1, round($st->floatDiffInDays($fn), 1));
+                    $durasiTotal += $mt->getEffectiveWorkingDurationDays();
                 }
                 $avg = $count > 0 ? round($durasiTotal / $count, 1) : 0;
 
@@ -400,7 +433,24 @@ class DashboardController extends Controller
             $trendSelesaiData = $sixSelesai;
             $trendAvgDurasiData = $sixDurasi;
 
-            $recentTugas = Tugas::with(['petugas'])->latest()->take(5)->get();
+            $recentTugas = Tugas::with(['petugas', 'admin', 'logs'])
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
+                ->latest()
+                ->take(5)
+                ->get();
+
+            $pendingPermohonanCount = Tugas::where('status_permohonan', 'Menunggu Persetujuan')
+                ->where('status', '!=', 'Selesai')
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
+                ->count();
+
+            $tugasMendekatiDeadline = Tugas::with(['petugas', 'admin', 'kolaborator'])
+                ->approachingDeadline(2)
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
+                ->orderBy('tanggal_selesai', 'asc')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            $tugasMendekatiDeadlineCount = $tugasMendekatiDeadline->count();
 
             $data = [
                 'title' => 'Dashboard Pimpinan & Administrator',
@@ -409,6 +459,11 @@ class DashboardController extends Controller
                 'isKasubbag' => false,
                 'periode' => $periode,
                 'periodeLabel' => $periodeLabel,
+                'klasifikasi' => $klasifikasi,
+                'klasifikasiLabel' => $klasifikasiLabel,
+                'pendingPermohonanCount' => $pendingPermohonanCount,
+                'tugasMendekatiDeadline' => $tugasMendekatiDeadline,
+                'tugasMendekatiDeadlineCount' => $tugasMendekatiDeadlineCount,
                 'totalUser' => User::count(),
                 'totalPetugas' => $petugasList->count(),
                 'totalTugas' => $totalTugas,
@@ -416,6 +471,7 @@ class DashboardController extends Controller
                 'tugasSelesai' => $tugasSelesai,
                 'tugasBerjalan' => $tugasBerjalan,
                 'tugasPerluRevisi' => $tugasPerluRevisi,
+                'tugasHold' => $tugasHold,
                 'tugasTepatWaktu' => $tugasTepatWaktu,
                 'tugasTerlambat' => $tugasTerlambat,
                 'onTimeRate' => $onTimeRate,
@@ -437,39 +493,46 @@ class DashboardController extends Controller
             ];
         } else {
             // Kepala Sub Bagian or Petugas queries
-            $scopeCallback = function ($q) use ($currentUser, $isKasubbag) {
+            $scopeCallback = function ($q) use ($currentUser, $isKasubbag): void {
                 if ($isKasubbag) {
                     $q->where('petugas_id', $currentUser->id)
-                        ->orWhere('admin_id', $currentUser->id);
+                        ->orWhere('admin_id', $currentUser->id)
+                        ->orWhereHas('kolaborator', fn ($k) => $k->where('users.id', $currentUser->id));
                 } else {
-                    $q->where('petugas_id', $currentUser->id);
+                    $q->where('petugas_id', $currentUser->id)
+                        ->orWhereHas('kolaborator', fn ($k) => $k->where('users.id', $currentUser->id));
                 }
             };
 
             $myTugasQuery = Tugas::where($scopeCallback);
             $applyPeriod($myTugasQuery);
-            $myTugasInPeriod = $myTugasQuery->with(['admin', 'petugas'])->get();
+            $myTugasInPeriod = $myTugasQuery->with(['admin', 'petugas', 'kolaborator', 'diskusi', 'logs'])->get()
+                ->filter(function (Tugas $t) use ($currentUser, $isKasubbag): bool {
+                    if ($isKasubbag && (int) $t->admin_id === (int) $currentUser->id) {
+                        return true;
+                    }
+
+                    return $t->countsTowardOfficerPerformance($currentUser->id);
+                });
 
             $totalTugas = $myTugasInPeriod->count();
             $tugasMenunggu = $myTugasInPeriod->where('status', 'Menunggu Konfirmasi')->count();
             $tugasSelesai = $myTugasInPeriod->where('status', 'Selesai')->count();
             $tugasBerjalan = $myTugasInPeriod->whereIn('status', ['Didelegasikan', 'Sedang Dikerjakan'])->count();
             $tugasPerluRevisi = $myTugasInPeriod->where('status', 'Perlu Revisi')->count();
+            $tugasHold = $myTugasInPeriod->where('status', 'HOLD')->count();
 
-            // Personal turnaround time & on-time stats
+            // Personal turnaround time & on-time stats (excluding HOLD duration)
             $completedTasks = $myTugasInPeriod->where('status', 'Selesai');
             $durasiTotalHari = 0;
             $tugasTepatWaktu = 0;
             $tugasTerlambat = 0;
 
             foreach ($completedTasks as $t) {
-                $start = Carbon::parse($t->tanggal_mulai ?? $t->created_at);
-                $finish = Carbon::parse($t->tanggal_tindak_lanjut ?? $t->updated_at);
-                $durasi = max(1, round($start->floatDiffInDays($finish), 1));
+                $durasi = $t->getEffectiveWorkingDurationDays();
                 $durasiTotalHari += $durasi;
 
-                $deadline = Carbon::parse($t->tanggal_selesai)->endOfDay();
-                if ($finish->lte($deadline)) {
+                if ($t->isCompletedOnTime()) {
                     $tugasTepatWaktu++;
                 } else {
                     $tugasTerlambat++;
@@ -494,21 +557,32 @@ class DashboardController extends Controller
             }
 
             // Chart 1: Doughnut Chart Status Tugas
-            $chartDoughnutLabels = ['Selesai Tepat Waktu', 'Selesai Terlambat', 'Sedang Dikerjakan', 'Menunggu Konfirmasi', 'Perlu Revisi'];
+            $chartDoughnutLabels = ['Selesai Tepat Waktu', 'Selesai Terlambat', 'Sedang Dikerjakan', 'Menunggu Konfirmasi', 'Perlu Revisi', 'HOLD'];
             $chartDoughnutData = [
                 $tugasTepatWaktu,
                 $tugasTerlambat,
                 $tugasBerjalan,
                 $tugasMenunggu,
                 $tugasPerluRevisi,
+                $tugasHold,
             ];
 
             // Chart 2: Recent Completed Tasks Durasi vs Target (Hari)
-            $recentCompleted = Tugas::where($scopeCallback)
+            $recentCompleted = Tugas::with(['kolaborator', 'diskusi', 'logs'])
+                ->where($scopeCallback)
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
                 ->where('status', 'Selesai')
                 ->latest('tanggal_tindak_lanjut')
-                ->take(6)
+                ->take(12)
                 ->get()
+                ->filter(function (Tugas $t) use ($currentUser, $isKasubbag): bool {
+                    if ($isKasubbag && (int) $t->admin_id === (int) $currentUser->id) {
+                        return true;
+                    }
+
+                    return $t->countsTowardOfficerPerformance($currentUser->id);
+                })
+                ->take(6)
                 ->reverse();
 
             $myTaskLabels = [];
@@ -517,15 +591,36 @@ class DashboardController extends Controller
 
             foreach ($recentCompleted as $rt) {
                 $start = Carbon::parse($rt->tanggal_mulai ?? $rt->created_at);
-                $finish = Carbon::parse($rt->tanggal_tindak_lanjut ?? $rt->updated_at);
                 $target = Carbon::parse($rt->tanggal_selesai);
 
                 $myTaskLabels[] = strlen($rt->judul) > 18 ? substr($rt->judul, 0, 18).'...' : $rt->judul;
-                $myTaskActualDurasi[] = max(1, round($start->floatDiffInDays($finish), 1));
+                $myTaskActualDurasi[] = $rt->getEffectiveWorkingDurationDays();
                 $myTaskTargetDurasi[] = max(1, round($start->floatDiffInDays($target), 1));
             }
 
-            $recentTugas = Tugas::with(['admin', 'petugas'])->where($scopeCallback)->latest()->take(5)->get();
+            $recentTugas = Tugas::with(['admin', 'petugas', 'logs'])
+                ->where($scopeCallback)
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
+                ->latest()
+                ->take(5)
+                ->get();
+
+            $pendingPermohonanCount = $isKasubbag
+                ? Tugas::where('admin_id', $currentUser->id)
+                    ->where('status_permohonan', 'Menunggu Persetujuan')
+                    ->where('status', '!=', 'Selesai')
+                    ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
+                    ->count()
+                : 0;
+
+            $tugasMendekatiDeadline = Tugas::with(['admin', 'petugas', 'kolaborator'])
+                ->where($scopeCallback)
+                ->approachingDeadline(2)
+                ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
+                ->orderBy('tanggal_selesai', 'asc')
+                ->orderBy('created_at', 'desc')
+                ->get();
+            $tugasMendekatiDeadlineCount = $tugasMendekatiDeadline->count();
 
             $data = [
                 'title' => $isKasubbag ? 'Dashboard '.$currentUser->jabatan : 'Dashboard Kinerja Petugas',
@@ -534,11 +629,17 @@ class DashboardController extends Controller
                 'isKasubbag' => $isKasubbag,
                 'periode' => $periode,
                 'periodeLabel' => $periodeLabel,
+                'klasifikasi' => $klasifikasi,
+                'klasifikasiLabel' => $klasifikasiLabel,
+                'pendingPermohonanCount' => $pendingPermohonanCount,
+                'tugasMendekatiDeadline' => $tugasMendekatiDeadline,
+                'tugasMendekatiDeadlineCount' => $tugasMendekatiDeadlineCount,
                 'totalTugas' => $totalTugas,
                 'tugasMenunggu' => $tugasMenunggu,
                 'tugasSelesai' => $tugasSelesai,
                 'tugasBerjalan' => $tugasBerjalan,
                 'tugasPerluRevisi' => $tugasPerluRevisi,
+                'tugasHold' => $tugasHold,
                 'tugasTepatWaktu' => $tugasTepatWaktu,
                 'tugasTerlambat' => $tugasTerlambat,
                 'onTimeRate' => $onTimeRate,

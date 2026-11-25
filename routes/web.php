@@ -32,7 +32,7 @@ Route::middleware('auth')->group(function () {
     Route::get('user/export/pdf', [UserController::class, 'exportPdf'])->name('user.export.pdf');
 
     // User CRUD
-    Route::resource('user', UserController::class);
+    Route::resource('user', UserController::class)->except(['show']);
     Route::get('users', [UserController::class, 'index'])->name('user'); // Alias for backwards compatibility
 
     // Export Laporan Tugas (Excel & PDF) - placed before parameterized routes
@@ -56,11 +56,25 @@ Route::middleware('auth')->group(function () {
     // Delegasikan Tugas ke Petugas (oleh Kepala Sub Bagian / Admin)
     Route::post('tugas/{tugas}/delegasikan', [TugasController::class, 'delegasikanKePetugas'])->name('tugas.delegasikan');
 
-    // Verifikasi Admin / Kepala Sub Bagian
+    // Verifikasi Admin / Kepala Sub Bagian / Panitera Muda
     Route::post('tugas/{tugas}/verifikasi', [TugasController::class, 'verifikasi'])->name('tugas.verifikasi');
+
+    // Hold / Lanjutkan Tugas (Hanya Admin & Pemberi Tugas)
+    Route::post('tugas/{tugas}/hold', [TugasController::class, 'hold'])->name('tugas.hold');
+
+    // Permohonan Ceklist Petugas (Meminta Hold Tugas / Edit Perpanjangan Masa Pengerjaan)
+    Route::post('tugas/{tugas}/permohonan', [TugasController::class, 'ajukanPermohonan'])->name('tugas.permohonan');
+    Route::post('tugas/{tugas}/permohonan/tanggapi', [TugasController::class, 'tanggapiPermohonan'])->name('tugas.permohonan.tanggapi');
+
+    // Verifikasi & Persetujuan Delegasi Lintas Bidang (Kepala Sub Bagian / Panitera Muda / Admin)
+    Route::post('tugas/{tugas}/persetujuan-atasan', [TugasController::class, 'tanggapiPersetujuanAtasan'])->name('tugas.persetujuan-atasan');
 
     // Buka Kembali / Delegasikan Ulang Tugas yang Sudah Closed
     Route::post('tugas/{tugas}/buka-kembali', [TugasController::class, 'bukaKembali'])->name('tugas.buka-kembali');
+
+    // Komunikasi / Chat Progres & Kelola Multi-Petugas pada Detail Tugas
+    Route::post('tugas/{tugas}/diskusi', [TugasController::class, 'kirimDiskusi'])->name('tugas.diskusi.store');
+    Route::post('tugas/{tugas}/kolaborator', [TugasController::class, 'syncKolaborator'])->name('tugas.kolaborator.sync');
 
     // Pengaturan Akun (Profile Photo, Telepon/Kontak, Password)
     Route::get('pengaturan', [PengaturanController::class, 'index'])->name('pengaturan.index');

@@ -29,6 +29,8 @@ class TugasLog extends Model
         'status',
         'keterangan',
         'catatan',
+        'file_url',
+        'file_name',
     ];
 
     /**

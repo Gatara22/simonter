@@ -6,6 +6,7 @@ use App\Models\Tugas;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\Auth;
 use Tests\TestCase;
 
 class DashboardPerformanceTest extends TestCase
@@ -294,5 +295,412 @@ class DashboardPerformanceTest extends TestCase
         $this->assertEquals(1, $kasubbagStat['perlu_revisi']);
         $this->assertEquals(100.0, $kasubbagStat['revisi_rate']);
         $this->assertEquals(24.0, $kasubbagStat['avg_respond_jam']);
+    }
+
+    /**
+     * Test HOLD duration is excluded from working duration and lateness calculation when task is completed/closed.
+     */
+    public function test_hold_duration_is_excluded_from_working_duration_and_lateness_performance(): void
+    {
+        $admin = User::factory()->create(['jabatan' => 'Admin']);
+        $petugas = User::factory()->create(['name' => 'Petugas Hold Test', 'jabatan' => 'Petugas']);
+
+        // Task started 7 days ago with a 3-day deadline (deadline was 4 days ago).
+        // Task was placed on HOLD for 5 days (5 * 86400 = 432000 seconds) and completed today (0 days ago).
+        // Raw elapsed time = 7 days (which would be 4 days LATE without HOLD).
+        // Effective working duration excluding HOLD = 7 - 5 = 2.0 days (<= 3 days deadline -> ON TIME / Tepat Waktu!).
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Tugas Dengan Masa Hold 5 Hari',
+            'status' => 'Selesai',
+            'tanggal_mulai' => Carbon::now()->subDays(7)->startOfDay()->format('Y-m-d H:i:s'),
+            'tanggal_selesai' => Carbon::now()->subDays(4)->startOfDay()->format('Y-m-d H:i:s'),
+            'tanggal_tindak_lanjut' => Carbon::now()->startOfDay()->format('Y-m-d H:i:s'),
+            'total_hold_seconds' => 5 * 86400,
+        ]);
+
+        $this->assertEquals(2.0, $tugas->getEffectiveWorkingDurationDays());
+        $this->assertTrue($tugas->isCompletedOnTime());
+
+        // Verify on Petugas Dashboard
+        $responsePetugas = $this->actingAs($petugas)->get(route('dashboard'));
+        $responsePetugas->assertStatus(200);
+        $this->assertEquals(2.0, $responsePetugas->viewData('avgDurasiHari'));
+        $this->assertEquals(100.0, $responsePetugas->viewData('onTimeRate'));
+        $this->assertEquals(1, $responsePetugas->viewData('tugasTepatWaktu'));
+        $this->assertEquals(0, $responsePetugas->viewData('tugasTerlambat'));
+
+        // Verify on Admin Dashboard officer leaderboard
+        $responseAdmin = $this->actingAs($admin)->get(route('dashboard'));
+        $responseAdmin->assertStatus(200);
+        $petugasStats = collect($responseAdmin->viewData('petugasStats'));
+        $stat = $petugasStats->firstWhere('id', $petugas->id);
+
+        $this->assertNotNull($stat);
+        $this->assertEquals(2.0, $stat['avg_durasi']);
+        $this->assertEquals(100.0, $stat['on_time_rate']);
+        $this->assertEquals(1, $stat['tepat_waktu']);
+        $this->assertEquals(0, $stat['terlambat']);
+    }
+
+    /**
+     * Test admin dashboard supports filtering by klasifikasi and includes HOLD in doughnut chart data.
+     */
+    public function test_dashboard_filters_by_klasifikasi_and_includes_hold_status_in_chart(): void
+    {
+        $admin = User::factory()->create(['jabatan' => 'Admin']);
+        $petugas = User::factory()->create(['jabatan' => 'Petugas']);
+
+        $initialHold = Tugas::where('status', 'HOLD')->count();
+        $initialSekTotal = Tugas::where('klasifikasi', 'Kesekretariatan')->count();
+        $initialSekHold = Tugas::where('klasifikasi', 'Kesekretariatan')->where('status', 'HOLD')->count();
+        $initialKepTotal = Tugas::where('klasifikasi', 'Kepaniteraan')->count();
+        $initialKepHold = Tugas::where('klasifikasi', 'Kepaniteraan')->where('status', 'HOLD')->count();
+
+        Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Tugas Sekretariat Aktif',
+            'klasifikasi' => 'Kesekretariatan',
+            'status' => 'Sedang Dikerjakan',
+        ]);
+
+        Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Tugas Kepaniteraan Hold',
+            'klasifikasi' => 'Kepaniteraan',
+            'status' => 'HOLD',
+        ]);
+
+        // Unfiltered dashboard includes HOLD in doughnut labels and counts
+        $allResp = $this->actingAs($admin)->get(route('dashboard'));
+        $allResp->assertStatus(200);
+        $labels = $allResp->viewData('chartDoughnutLabels');
+        $data = $allResp->viewData('chartDoughnutData');
+        $this->assertContains('HOLD', $labels);
+        $holdIdx = array_search('HOLD', $labels, true);
+        $this->assertSame($initialHold + 1, $data[$holdIdx]);
+
+        // Filtered by Kesekretariatan: excludes Kepaniteraan Hold task
+        $sekResp = $this->actingAs($admin)->get(route('dashboard', ['klasifikasi' => 'Kesekretariatan']));
+        $sekResp->assertStatus(200);
+        $this->assertEquals('Kesekretariatan', $sekResp->viewData('klasifikasi'));
+        $this->assertEquals($initialSekTotal + 1, $sekResp->viewData('totalTugas'));
+        $this->assertEquals($initialSekHold, $sekResp->viewData('tugasHold'));
+
+        // Filtered by Kepaniteraan: includes only Kepaniteraan Hold task
+        $kepResp = $this->actingAs($admin)->get(route('dashboard', ['klasifikasi' => 'Kepaniteraan']));
+        $kepResp->assertStatus(200);
+        $this->assertEquals('Kepaniteraan', $kepResp->viewData('klasifikasi'));
+        $this->assertEquals($initialKepTotal + 1, $kepResp->viewData('totalTugas'));
+        $this->assertEquals($initialKepHold + 1, $kepResp->viewData('tugasHold'));
+    }
+
+    /**
+     * Test collaborative multi-petugas tasks credit delegated officers who post at least 1 comment or attachment.
+     */
+    public function test_collaborative_multi_petugas_task_credits_delegated_officers_with_at_least_one_comment_or_attachment(): void
+    {
+        $admin = User::factory()->create(['name' => 'Admin Kolaborasi', 'jabatan' => 'Admin']);
+        $petugasPic = User::factory()->create(['name' => 'Petugas PIC Komentar', 'jabatan' => 'Petugas']);
+        $petugasAttachment = User::factory()->create(['name' => 'Petugas Lampiran Aktif', 'jabatan' => 'Petugas']);
+        $petugasPasif = User::factory()->create(['name' => 'Petugas Pasif Tanpa Aksi', 'jabatan' => 'Petugas']);
+
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugasPic->id,
+            'judul' => 'Audit Kolaborasi Multi-Petugas',
+            'status' => 'Selesai',
+            'tanggal_mulai' => Carbon::now()->subDays(3)->format('Y-m-d'),
+            'tanggal_selesai' => Carbon::now()->addDays(2)->format('Y-m-d'),
+            'tanggal_tindak_lanjut' => Carbon::now()->subDays(1),
+        ]);
+
+        $tugas->kolaborator()->attach([$petugasAttachment->id, $petugasPasif->id]);
+
+        // PIC posts 1 text comment (no file)
+        $tugas->diskusi()->create([
+            'user_id' => $petugasPic->id,
+            'pesan' => 'Progres bagian utama telah selesai disusun.',
+        ]);
+
+        // Collaborator 1 posts 1 file attachment (no text message)
+        $tugas->diskusi()->create([
+            'user_id' => $petugasAttachment->id,
+            'pesan' => null,
+            'file_path' => 'diskusi/lampiran_kolaborator.pdf',
+            'file_name' => 'lampiran_kolaborator.pdf',
+        ]);
+
+        // Author (Admin) also posts a comment; should NOT credit Admin in officer stats
+        $tugas->diskusi()->create([
+            'user_id' => $admin->id,
+            'pesan' => 'Terima kasih atas laporannya.',
+        ]);
+
+        // Collaborator 2 (petugasPasif) posts NO comment and NO attachment
+
+        // 1. Verify Admin Dashboard performance matrix & leaderboard ranking credits PIC & Attachment collaborator, excludes passive collaborator
+        $adminResp = $this->actingAs($admin)->get(route('dashboard'));
+        $adminResp->assertStatus(200);
+        $petugasStats = collect($adminResp->viewData('petugasStats'));
+
+        $picStat = $petugasStats->firstWhere('id', $petugasPic->id);
+        $this->assertNotNull($picStat);
+        $this->assertSame(1, $picStat['total_tugas']);
+        $this->assertSame(1, $picStat['kolaborasi_count']);
+        $this->assertSame(1, $picStat['selesai']);
+        $this->assertSame(1, $picStat['tepat_waktu']);
+        $this->assertEquals(100.0, $picStat['on_time_rate']);
+        $this->assertEquals(60.0, $picStat['score']);
+
+        $attachStat = $petugasStats->firstWhere('id', $petugasAttachment->id);
+        $this->assertNotNull($attachStat);
+        $this->assertSame(1, $attachStat['total_tugas']);
+        $this->assertSame(1, $attachStat['kolaborasi_count']);
+        $this->assertSame(1, $attachStat['selesai']);
+        $this->assertSame(1, $attachStat['tepat_waktu']);
+        $this->assertEquals(100.0, $attachStat['on_time_rate']);
+        $this->assertEquals(60.0, $attachStat['score']);
+
+        $pasifStat = $petugasStats->firstWhere('id', $petugasPasif->id);
+        $this->assertNotNull($pasifStat);
+        $this->assertSame(0, $pasifStat['total_tugas']);
+        $this->assertSame(0, $pasifStat['kolaborasi_count']);
+        $this->assertSame(0, $pasifStat['selesai']);
+        $this->assertEquals(0.0, $pasifStat['score']);
+
+        // 2. Verify Personal Dashboards reflect the same collaborative contribution rule
+        $attachDashboard = $this->actingAs($petugasAttachment)->get(route('dashboard'));
+        $attachDashboard->assertStatus(200);
+        $this->assertSame(1, $attachDashboard->viewData('totalTugas'));
+        $this->assertSame(1, $attachDashboard->viewData('tugasSelesai'));
+        $this->assertEquals(100.0, $attachDashboard->viewData('onTimeRate'));
+
+        $pasifDashboard = $this->actingAs($petugasPasif)->get(route('dashboard'));
+        $pasifDashboard->assertStatus(200);
+        $this->assertSame(0, $pasifDashboard->viewData('totalTugas'));
+        $this->assertSame(0, $pasifDashboard->viewData('tugasSelesai'));
+    }
+
+    /**
+     * Test unified single-row horizontal navbar (logo, date, menu, notif, user aligned) without auto-hide and with Superman-shield "S" logo for all roles.
+     */
+    public function test_unified_horizontal_navbar_without_autohide_and_shield_logo_present_for_all_roles(): void
+    {
+        $roles = ['Admin', 'Kepala Sub Bagian', 'Panitera Muda', 'Petugas'];
+
+        foreach ($roles as $role) {
+            $user = User::factory()->create(['jabatan' => $role]);
+
+            $response = $this->actingAs($user)->get(route('dashboard'));
+            $response->assertStatus(200);
+            $response->assertDontSee('sidebar-scroll-hidden', false);
+            $response->assertDontSee('id="sidebarPeekBtn"', false);
+            $response->assertSee('simonter-unified-navbar', false);
+            $response->assertSee('position: sticky;', false);
+            $response->assertSee('id="btnMinimizeNavbar"', false);
+            $response->assertSee('is-minimized', false);
+            $response->assertSee('horizontal-menubar', false);
+            $response->assertSee('horizontal-nav-list', false);
+            $response->assertSee('unified-date-pill', false);
+            $response->assertSee('sidebar-icon-box', false);
+            $response->assertSee('simonter-shield-s', false);
+            $response->assertSee('fa-chart-line', false);
+            $response->assertSee('fa-clipboard-check', false);
+            $response->assertSee('fa-compass', false);
+        }
+
+        Auth::logout();
+
+        $loginResp = $this->get(route('login'));
+        $loginResp->assertStatus(200);
+        $loginResp->assertSee('simonter-shield-s', false);
+
+        $welcomeResp = $this->get(route('welcome'));
+        $welcomeResp->assertStatus(200);
+        $welcomeResp->assertSee('simonter-shield-s', false);
+        $welcomeResp->assertSee('testimonial-card-modern', false);
+        $welcomeResp->assertSee('Dr. Khoiriyah Roihan, S.Ag., M.H.');
+        $welcomeResp->assertDontSee('testimonial-img', false);
+        $welcomeResp->assertDontSee('enno/assets/img/testimonials/', false);
+    }
+
+    /**
+     * Test approaching-deadline (0-2 days) box and modal table on dashboard work for all roles and respect filters.
+     */
+    public function test_dashboard_approaching_deadline_box_and_table_work_for_all_user_roles(): void
+    {
+        $baseAll = Tugas::approachingDeadline(2)->count();
+        $baseSek = Tugas::approachingDeadline(2)->where('klasifikasi', 'Kesekretariatan')->count();
+        $baseKep = Tugas::approachingDeadline(2)->where('klasifikasi', 'Kepaniteraan')->count();
+
+        $admin = User::factory()->create(['jabatan' => 'Admin']);
+        $kasubbag = User::factory()->create(['jabatan' => 'Kepala Sub Bagian', 'klasifikasi' => 'Kesekretariatan']);
+        $panmud = User::factory()->create(['jabatan' => 'Panitera Muda', 'klasifikasi' => 'Kepaniteraan']);
+        $petugasUtama = User::factory()->create(['name' => 'Petugas Deadline Utama', 'jabatan' => 'Petugas', 'klasifikasi' => 'Kesekretariatan']);
+        $petugasKolab = User::factory()->create(['name' => 'Petugas Kolaborator Pasif Deadline', 'jabatan' => 'Petugas', 'klasifikasi' => 'Kepaniteraan']);
+        $petugasLain = User::factory()->create(['name' => 'Petugas Lain Deadline', 'jabatan' => 'Petugas', 'klasifikasi' => 'Kesekretariatan']);
+
+        // Included (+0 days, started 2 months ago -> tests periode=bulan_ini still shows it)
+        $tugasHariIni = Tugas::factory()->create([
+            'admin_id' => $kasubbag->id,
+            'petugas_id' => $petugasUtama->id,
+            'judul' => 'DL_0_HARI_KESEK',
+            'klasifikasi' => 'Kesekretariatan',
+            'status' => 'Sedang Dikerjakan',
+            'tanggal_mulai' => Carbon::today()->subMonths(2)->format('Y-m-d'),
+            'tanggal_selesai' => Carbon::today()->format('Y-m-d'),
+        ]);
+        // Attach passive collaborator (no diskusi comment yet -> still must see urgent deadline)
+        $tugasHariIni->kolaborator()->attach($petugasKolab->id);
+
+        // Included (+1 day)
+        $tugasBesok = Tugas::factory()->create([
+            'admin_id' => $panmud->id,
+            'petugas_id' => $petugasUtama->id,
+            'judul' => 'DL_1_HARI_KEPAN',
+            'klasifikasi' => 'Kepaniteraan',
+            'status' => 'Didelegasikan',
+            'tanggal_mulai' => Carbon::today()->subDays(2)->format('Y-m-d'),
+            'tanggal_selesai' => Carbon::today()->addDay()->format('Y-m-d'),
+        ]);
+
+        // Included (+2 days, assigned to petugasLain)
+        $tugasLusa = Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugasLain->id,
+            'judul' => 'DL_2_HARI_KESEK',
+            'klasifikasi' => 'Kesekretariatan',
+            'status' => 'Menunggu Konfirmasi',
+            'tanggal_mulai' => Carbon::today()->subDays(1)->format('Y-m-d'),
+            'tanggal_selesai' => Carbon::today()->addDays(2)->format('Y-m-d'),
+        ]);
+
+        // Excluded: past (-1 day) and too far (+3 days)
+        Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugasUtama->id,
+            'judul' => 'EXCL_PAST_MINUS_1',
+            'status' => 'Sedang Dikerjakan',
+            'tanggal_selesai' => Carbon::today()->subDay()->format('Y-m-d'),
+        ]);
+        Tugas::factory()->create([
+            'admin_id' => $admin->id,
+            'petugas_id' => $petugasUtama->id,
+            'judul' => 'EXCL_PLUS_3_HARI',
+            'status' => 'Sedang Dikerjakan',
+            'tanggal_selesai' => Carbon::today()->addDays(3)->format('Y-m-d'),
+        ]);
+
+        // Excluded statuses even when tanggal_selesai is 0-2 days
+        foreach (['Selesai', 'HOLD', 'Menunggu Persetujuan Atasan', 'Ditolak Atasan'] as $excludedStatus) {
+            Tugas::factory()->create([
+                'admin_id' => $admin->id,
+                'petugas_id' => $petugasUtama->id,
+                'judul' => 'EXCL_STATUS_'.str_replace(' ', '_', $excludedStatus),
+                'status' => $excludedStatus,
+                'tanggal_selesai' => Carbon::today()->addDay()->format('Y-m-d'),
+            ]);
+        }
+
+        // 1. Admin dashboard sees all approaching-deadline tasks sorted ascending, ignores periode filter, respects klasifikasi
+        $adminResp = $this->actingAs($admin)->get(route('dashboard', ['periode' => 'bulan_ini']));
+        $adminResp->assertStatus(200);
+        $adminResp->assertSee('id="cardMendekatiDeadline"', false);
+        $adminResp->assertSee('id="modalTugasMendekatiDeadline"', false);
+        $adminResp->assertSee('id="tableTugasMendekatiDeadline"', false);
+        $adminResp->assertSee('Mendekati Deadline (0-2 Hari)');
+        $this->assertSame($baseAll + 3, $adminResp->viewData('tugasMendekatiDeadlineCount'));
+
+        $adminItems = $adminResp->viewData('tugasMendekatiDeadline');
+        $createdOrderIds = $adminItems->whereIn('id', [$tugasHariIni->id, $tugasBesok->id, $tugasLusa->id])->pluck('id')->values()->all();
+        $this->assertSame([$tugasHariIni->id, $tugasBesok->id, $tugasLusa->id], $createdOrderIds);
+
+        $adminModalHtml = strstr($adminResp->getContent(), 'id="modalTugasMendekatiDeadline"') ?: '';
+        $this->assertStringContainsString('DL_0_HARI_KESEK', $adminModalHtml);
+        $this->assertStringContainsString('DL_1_HARI_KEPAN', $adminModalHtml);
+        $this->assertStringContainsString('DL_2_HARI_KESEK', $adminModalHtml);
+        $this->assertStringContainsString('Deadline Hari Ini', $adminModalHtml);
+        $this->assertStringContainsString('Sisa 1 Hari', $adminModalHtml);
+        $this->assertStringContainsString('Sisa 2 Hari', $adminModalHtml);
+        $this->assertStringNotContainsString('EXCL_PAST_MINUS_1', $adminModalHtml);
+        $this->assertStringNotContainsString('EXCL_PLUS_3_HARI', $adminModalHtml);
+        $this->assertStringNotContainsString('EXCL_STATUS_Selesai', $adminModalHtml);
+        $this->assertStringNotContainsString('EXCL_STATUS_HOLD', $adminModalHtml);
+        $this->assertStringNotContainsString('EXCL_STATUS_Menunggu_Persetujuan_Atasan', $adminModalHtml);
+        $this->assertStringNotContainsString('EXCL_STATUS_Ditolak_Atasan', $adminModalHtml);
+
+        $adminTitles = $adminItems->pluck('judul')->all();
+        $this->assertNotContains('EXCL_PAST_MINUS_1', $adminTitles);
+        $this->assertNotContains('EXCL_PLUS_3_HARI', $adminTitles);
+        $this->assertNotContains('EXCL_STATUS_Selesai', $adminTitles);
+        $this->assertNotContains('EXCL_STATUS_HOLD', $adminTitles);
+        $this->assertNotContains('EXCL_STATUS_Menunggu_Persetujuan_Atasan', $adminTitles);
+        $this->assertNotContains('EXCL_STATUS_Ditolak_Atasan', $adminTitles);
+
+        // Klasifikasi filter on Admin dashboard
+        $adminKepResp = $this->actingAs($admin)->get(route('dashboard', ['klasifikasi' => 'Kepaniteraan']));
+        $adminKepResp->assertStatus(200);
+        $this->assertSame($baseKep + 1, $adminKepResp->viewData('tugasMendekatiDeadlineCount'));
+        $adminKepResp->assertSee('DL_1_HARI_KEPAN');
+        $adminKepResp->assertDontSee('DL_0_HARI_KESEK');
+        $adminKepResp->assertDontSee('DL_2_HARI_KESEK');
+
+        $adminSekResp = $this->actingAs($admin)->get(route('dashboard', ['klasifikasi' => 'Kesekretariatan']));
+        $adminSekResp->assertStatus(200);
+        $this->assertSame($baseSek + 2, $adminSekResp->viewData('tugasMendekatiDeadlineCount'));
+        $adminSekResp->assertSee('DL_0_HARI_KESEK');
+        $adminSekResp->assertSee('DL_2_HARI_KESEK');
+        $adminSekResp->assertDontSee('DL_1_HARI_KEPAN');
+
+        // 2. Kepala Sub Bagian sees tasks where they are delegator/PIC/collaborator
+        $kasubbagResp = $this->actingAs($kasubbag)->get(route('dashboard'));
+        $kasubbagResp->assertStatus(200);
+        $kasubbagResp->assertSee('id="cardMendekatiDeadline"', false);
+        $this->assertSame(1, $kasubbagResp->viewData('tugasMendekatiDeadlineCount'));
+        $kasubbagResp->assertSee('DL_0_HARI_KESEK');
+        $kasubbagResp->assertDontSee('DL_1_HARI_KEPAN');
+
+        // 3. Panitera Muda sees tasks where they are delegator/PIC/collaborator
+        $panmudResp = $this->actingAs($panmud)->get(route('dashboard'));
+        $panmudResp->assertStatus(200);
+        $panmudResp->assertSee('id="cardMendekatiDeadline"', false);
+        $this->assertSame(1, $panmudResp->viewData('tugasMendekatiDeadlineCount'));
+        $panmudResp->assertSee('DL_1_HARI_KEPAN');
+        $panmudResp->assertDontSee('DL_0_HARI_KESEK');
+
+        // 4. Petugas Utama sees their 2 approaching-deadline tasks (including 2-month-old start date under periode=bulan_ini)
+        $petugasUtamaResp = $this->actingAs($petugasUtama)->get(route('dashboard', ['periode' => 'bulan_ini']));
+        $petugasUtamaResp->assertStatus(200);
+        $petugasUtamaResp->assertSee('id="cardMendekatiDeadline"', false);
+        $this->assertSame(2, $petugasUtamaResp->viewData('tugasMendekatiDeadlineCount'));
+        $petugasUtamaResp->assertSee('DL_0_HARI_KESEK');
+        $petugasUtamaResp->assertSee('DL_1_HARI_KEPAN');
+        $petugasUtamaResp->assertDontSee('DL_2_HARI_KESEK');
+
+        // 5. Passive Collaborator still sees the urgent collaborative task deadline
+        $petugasKolabResp = $this->actingAs($petugasKolab)->get(route('dashboard'));
+        $petugasKolabResp->assertStatus(200);
+        $this->assertSame(1, $petugasKolabResp->viewData('tugasMendekatiDeadlineCount'));
+        $petugasKolabResp->assertSee('DL_0_HARI_KESEK');
+
+        // 6. Verify tugas.index?deadline=mendekati works accurately for Admin and Petugas
+        $indexAdminResp = $this->actingAs($admin)->get(route('tugas.index', ['deadline' => 'mendekati']));
+        $indexAdminResp->assertStatus(200);
+        $indexAdminResp->assertSee('Mendekati Deadline (0-2 Hari)');
+        $indexAdminResp->assertSee('DL_0_HARI_KESEK');
+        $indexAdminResp->assertSee('DL_1_HARI_KEPAN');
+        $indexAdminResp->assertSee('DL_2_HARI_KESEK');
+        $indexAdminResp->assertDontSee('EXCL_PLUS_3_HARI');
+
+        $indexPetugasResp = $this->actingAs($petugasUtama)->get(route('tugas.index', ['deadline' => 'mendekati']));
+        $indexPetugasResp->assertStatus(200);
+        $indexPetugasResp->assertSee('DL_0_HARI_KESEK');
+        $indexPetugasResp->assertSee('DL_1_HARI_KEPAN');
+        $indexPetugasResp->assertDontSee('DL_2_HARI_KESEK');
+        $indexPetugasResp->assertDontSee('EXCL_PAST_MINUS_1');
     }
 }

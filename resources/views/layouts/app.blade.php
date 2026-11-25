@@ -11,6 +11,7 @@
     <meta name="author" content="Pengadilan Agama Jakarta Utara">
 
     <title>SIMONTER | {{ $title }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ asset('images/simonter-s-favicon.svg') }}">
 
     <!-- Custom fonts for this template-->
     <link href="{{ asset('sbadmin2/vendor/fontawesome-free/css/all.min.css') }}" rel="stylesheet" type="text/css">
@@ -88,6 +89,10 @@
             background-color: #f0fdfa;
             border-left-color: #06b6d4;
         }
+        .notif-item-unread.notif-accent-secondary {
+            background-color: #f1f5f9;
+            border-left-color: #475569;
+        }
         .notif-item-read {
             background-color: #ffffff;
             border-left: 4px solid transparent;
@@ -161,6 +166,7 @@
         .push-header-success { background: linear-gradient(135deg, #059669 0%, #047857 100%); }
         .push-header-warning { background: linear-gradient(135deg, #d97706 0%, #b45309 100%); }
         .push-header-danger  { background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%); }
+        .push-header-secondary { background: linear-gradient(135deg, #475569 0%, #334155 100%); }
 
         .push-task-box {
             background-color: #f8fafc;
@@ -176,6 +182,281 @@
         .push-notif-card:hover .push-progress-bar {
             animation-play-state: paused;
         }
+
+        /* Global UI Polish & Design System */
+        .card {
+            border-radius: 0.75rem;
+            border-color: #e2e8f0;
+        }
+        .card-header {
+            border-top-left-radius: 0.75rem !important;
+            border-top-right-radius: 0.75rem !important;
+            border-bottom-color: #e2e8f0;
+        }
+        .card-hover-lift {
+            transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+        }
+        .card-hover-lift:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 24px rgba(15, 23, 42, 0.1) !important;
+        }
+        .btn {
+            border-radius: 0.45rem;
+            transition: transform 0.14s ease, box-shadow 0.14s ease;
+        }
+        .btn:not(:disabled):hover {
+            transform: translateY(-1px);
+        }
+        .table th {
+            vertical-align: middle !important;
+        }
+        .simonter-s-logo {
+            display: inline-block;
+            flex-shrink: 0;
+            transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.25s ease;
+        }
+        .simonter-brand-link:hover .simonter-s-logo {
+            transform: scale(1.08) rotate(-3deg);
+            filter: drop-shadow(0 4px 10px rgba(34, 211, 238, 0.35));
+        }
+
+        /* Unified Single-Row Horizontal Navbar (Sticky + Simple Minimize) */
+        #wrapper {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        #wrapper #content-wrapper {
+            width: 100%;
+            flex: 1 0 auto;
+            overflow-x: clip !important;
+        }
+        #accordionSidebar.simonter-unified-navbar.horizontal-menubar {
+            position: sticky;
+            top: 0;
+            z-index: 1030;
+            width: 100% !important;
+            min-height: 58px !important;
+            padding: 0.42rem 1rem;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 48%, #0284c7 100%);
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.14);
+            transition: padding 0.24s ease, min-height 0.24s ease, box-shadow 0.24s ease;
+        }
+        .navbar-minimize-btn {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.72rem;
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.2s ease;
+        }
+        .navbar-minimize-btn:hover {
+            background: rgba(255, 255, 255, 0.24);
+            transform: scale(1.06);
+        }
+        .navbar-minimize-btn i {
+            transition: transform 0.24s ease;
+        }
+        #accordionSidebar.simonter-unified-navbar.is-minimized {
+            min-height: 40px !important;
+            padding: 0.2rem 0.9rem;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.2);
+        }
+        #accordionSidebar.simonter-unified-navbar.is-minimized .simonter-s-logo {
+            transform: scale(0.78);
+        }
+        #accordionSidebar.simonter-unified-navbar.is-minimized .unified-brand-subtitle,
+        #accordionSidebar.simonter-unified-navbar.is-minimized .unified-date-pill,
+        #accordionSidebar.simonter-unified-navbar.is-minimized .unified-user-name {
+            display: none !important;
+        }
+        #accordionSidebar.simonter-unified-navbar.is-minimized .unified-user-avatar {
+            width: 26px !important;
+            height: 26px !important;
+        }
+        @media (min-width: 1200px) {
+            #accordionSidebar.simonter-unified-navbar.is-minimized .nav-menu-label {
+                display: none !important;
+            }
+            #accordionSidebar.simonter-unified-navbar.is-minimized .horizontal-nav-list .nav-item .nav-link {
+                padding: 0.22rem 0.45rem !important;
+            }
+        }
+        .unified-brand-wrap {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex-shrink: 0;
+        }
+        .unified-date-pill {
+            display: inline-flex;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.22);
+            color: #e2e8f0;
+            border-radius: 50rem;
+            padding: 0.22rem 0.65rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        .horizontal-nav-list {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            justify-content: center;
+            align-items: center;
+            gap: 0.28rem;
+            list-style: none;
+            margin: 0 auto;
+            padding: 0;
+        }
+        .horizontal-nav-list .nav-item {
+            display: inline-flex;
+        }
+        .horizontal-nav-list .nav-item .nav-link {
+            display: inline-flex !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0.42rem;
+            padding: 0.3rem 0.68rem !important;
+            border-radius: 999px;
+            color: rgba(255, 255, 255, 0.92) !important;
+            font-size: 0.73rem;
+            font-weight: 600;
+            white-space: nowrap;
+            width: auto !important;
+            transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .horizontal-nav-list .nav-item .nav-link:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #ffffff !important;
+            transform: translateY(-1px);
+        }
+        .horizontal-nav-list .nav-item.active .nav-link {
+            background: rgba(255, 255, 255, 0.22);
+            color: #ffffff !important;
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 4px 12px rgba(15, 23, 42, 0.2);
+        }
+        .sidebar-icon-box {
+            width: 24px;
+            height: 24px;
+            min-width: 24px;
+            border-radius: 0.48rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            color: #ffffff;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, 0.22);
+            transition: transform 0.2s ease;
+        }
+        .sidebar-icon-box i {
+            margin-right: 0 !important;
+            font-size: 0.72rem !important;
+            color: #ffffff !important;
+        }
+        .horizontal-nav-list .nav-item .nav-link:hover .sidebar-icon-box,
+        .horizontal-nav-list .nav-item.active .nav-link .sidebar-icon-box {
+            transform: scale(1.08);
+        }
+        .s-icon-dashboard {
+            background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+        }
+        .s-icon-users {
+            background: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+        }
+        .s-icon-tugas {
+            background: linear-gradient(135deg, #059669 0%, #34d399 100%);
+        }
+        .s-icon-delegasi {
+            background: linear-gradient(135deg, #d97706 0%, #fbbf24 100%);
+        }
+        .s-icon-petunjuk {
+            background: linear-gradient(135deg, #e11d48 0%, #fb7185 100%);
+        }
+        .sidebar-badge-count {
+            margin-left: 0.15rem;
+            font-size: 0.62rem;
+            padding: 0.14rem 0.4rem;
+            border-radius: 50rem;
+            box-shadow: 0 2px 5px rgba(15, 23, 42, 0.22);
+        }
+        .unified-right-actions {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 0.35rem;
+            flex-shrink: 0;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .unified-right-actions .nav-link {
+            color: rgba(255, 255, 255, 0.92) !important;
+            padding: 0.32rem 0.55rem !important;
+            border-radius: 999px;
+            display: inline-flex;
+            align-items: center;
+            transition: background-color 0.18s ease;
+        }
+        .unified-right-actions .nav-link:hover {
+            background: rgba(255, 255, 255, 0.14);
+            color: #ffffff !important;
+        }
+        .unified-right-actions .bell-ringing {
+            color: #fde047 !important;
+        }
+        .unified-right-actions .badge-counter {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 0.6rem;
+            padding: 0.16rem 0.36rem;
+        }
+        .unified-divider {
+            width: 1px;
+            height: 22px;
+            background: rgba(255, 255, 255, 0.22);
+            margin: 0 0.15rem;
+        }
+        .unified-user-name {
+            max-width: 135px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        @media (max-width: 1199.98px) {
+            #accordionSidebar.simonter-unified-navbar.horizontal-menubar {
+                flex-wrap: wrap;
+            }
+            .horizontal-nav-list {
+                flex-direction: column;
+                align-items: stretch;
+                padding: 0.6rem 0 0.25rem;
+                gap: 0.28rem;
+                width: 100%;
+            }
+            .horizontal-nav-list .nav-item {
+                display: block;
+                width: 100%;
+            }
+            .horizontal-nav-list .nav-item .nav-link {
+                width: 100% !important;
+                justify-content: flex-start !important;
+                border-radius: 0.65rem;
+            }
+        }
     </style>
 
 </head>
@@ -185,128 +466,36 @@
     <!-- Page Wrapper -->
     <div id="wrapper">
 
-        <!-- Sidebar -->
-        <ul class="navbar-nav bg-gradient-primary sidebar sidebar-dark accordion" id="accordionSidebar">
-
-            <!-- Sidebar - Brand -->
-            <a class="sidebar-brand d-flex align-items-center justify-content-center" href="{{ route('dashboard') }}">
-                <div class="sidebar-brand-icon">
-                    <i class="fas fa-tasks"></i>
-                </div>
-                <div class="sidebar-brand-text mx-3">SIMONTER <sup>1.0</sup></div>
-            </a>
-
-            <!-- Divider -->
-            <hr class="sidebar-divider my-0">
-
-            <!-- Nav Item - Dashboard -->
-            <li class="nav-item {{ $menuDashboard ?? '' }}">
-                <a class="nav-link" href="{{ route('dashboard') }}">
-                    <i class="fas fa-fw fa-tachometer-alt"></i>
-                    <span>Dashboard</span></a>
-            </li>
-
-            <!-- Divider -->
-            <hr class="sidebar-divider">
-
-            @if(Auth::user() && Auth::user()->jabatan === 'Admin')
-            <!-- Heading -->
-            <div class="sidebar-heading">
-                MENU ADMIN
-            </div>
-
-            <!-- Nav Item - Users -->
-            <li class="nav-item {{ $menuAdminUser ?? '' }}">
-                <a class="nav-link" href="{{ route('user.index') }}">
-                    <i class="fas fa-fw fa-user"></i>
-                    <span>Data User</span></a>
-            </li>
-
-            <!-- Nav Item - Tugas -->
-            <li class="nav-item {{ $menuAdminTugas ?? '' }}">
-                <a class="nav-link" href="{{ route('tugas.index') }}">
-                    <i class="fas fa-fw fa-tasks"></i>
-                    <span>Data Tugas (Delegasi)</span></a>
-            </li>
-            @endif
-
-            @if(Auth::user() && in_array(Auth::user()->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true))
-            <!-- Heading -->
-            <div class="sidebar-heading">
-                MENU {{ strtoupper(Auth::user()->jabatan) }}
-            </div>
-
-            <!-- Nav Item - Daftar Tugas & Delegasi -->
-            <li class="nav-item {{ $menuAdminTugas ?? ($menuKasubbagTugas ?? ($menuPetugasTugas ?? '')) }}">
-                <a class="nav-link" href="{{ route('tugas.index') }}">
-                    <i class="fas fa-fw fa-tasks"></i>
-                    <span>Data Tugas &amp; Delegasi</span></a>
-            </li>
-
-            <!-- Nav Item - Delegasikan Tugas Baru -->
-            <li class="nav-item {{ $menuDelegasiBaru ?? '' }}">
-                <a class="nav-link" href="{{ route('tugas.create') }}">
-                    <i class="fas fa-fw fa-paper-plane"></i>
-                    <span>Delegasikan Tugas Baru</span></a>
-            </li>
-            @endif
-
-            @if(Auth::user() && Auth::user()->jabatan === 'Petugas')
-            <!-- Heading -->
-            <div class="sidebar-heading">
-                MENU PETUGAS
-            </div>
-
-            <!-- Nav Item - Tugas Saya -->
-            <li class="nav-item {{ $menuPetugasTugas ?? '' }}">
-                <a class="nav-link" href="{{ route('tugas.index') }}">
-                    <i class="fas fa-fw fa-tasks"></i>
-                    <span>Data Tugas Saya</span></a>
-            </li>
-            @endif
-
-            <!-- Divider -->
-            <hr class="sidebar-divider">
-
-            <!-- Heading -->
-            <div class="sidebar-heading">
-                PANDUAN &amp; BANTUAN
-            </div>
-
-            <!-- Nav Item - Petunjuk Aplikasi -->
-            <li class="nav-item {{ $menuPetunjuk ?? '' }}">
-                <a class="nav-link" href="{{ route('petunjuk.index') }}">
-                    <i class="fas fa-fw fa-book-open"></i>
-                    <span>Petunjuk Aplikasi</span></a>
-            </li>
-
-            <!-- Divider -->
-            <hr class="sidebar-divider d-none d-md-block">
-
-            <!-- Sidebar Toggler (Sidebar) -->
-            <div class="text-center d-none d-md-inline">
-                <button class="rounded-circle border-0" id="sidebarToggle"></button>
-            </div>
-
-        </ul>
-        <!-- End of Sidebar -->
-
         <!-- Content Wrapper -->
         <div id="content-wrapper" class="d-flex flex-column">
 
             <!-- Main Content -->
             <div id="content">
 
-                <!-- Topbar -->
-                <nav class="navbar navbar-expand navbar-light bg-white topbar mb-4 static-top shadow">
+                <!-- Unified Single-Row Top Navigation Bar (Logo, Date, Menu, Notifications & User Aligned) -->
+                <nav id="accordionSidebar" class="navbar navbar-expand-xl navbar-dark simonter-unified-navbar horizontal-menubar mb-4" aria-label="Navigasi Utama SIMONTER">
+                    <!-- Left: Brand Logo + Date Pill -->
+                    <div class="unified-brand-wrap">
+                        <a href="{{ route('dashboard') }}" class="d-flex align-items-center text-decoration-none simonter-brand-link">
+                            @include('partials.simonter-logo', ['size' => 34, 'variant' => 'color', 'uid' => 'navbar', 'class' => 'mr-2'])
+                            <div class="d-flex flex-column" style="line-height: 1.08;">
+                                <span class="font-weight-bold text-white" style="font-size: 0.88rem; letter-spacing: 0.05em;">
+                                    SIMONTER <sup style="color: #67e8f9; font-weight: 700;">1.0</sup>
+                                </span>
+                                <small class="d-none d-sm-inline unified-brand-subtitle" style="font-size: 0.62rem; color: #cbd5e1;">
+                                    PA Jakarta Utara
+                                </small>
+                            </div>
+                        </a>
 
-                    <!-- Sidebar Toggle (Topbar) -->
-                    <button id="sidebarToggleTop" class="btn btn-link d-md-none rounded-circle mr-3">
-                        <i class="fa fa-bars"></i>
-                    </button>
+                        <div class="d-none d-md-inline-flex unified-date-pill ml-1" title="{{ \Carbon\Carbon::now()->translatedFormat('l, d F Y') }}">
+                            <i class="far fa-calendar-alt mr-1" style="color: #67e8f9;"></i>
+                            <span>{{ \Carbon\Carbon::now()->translatedFormat('d M Y') }}</span>
+                        </div>
+                    </div>
 
-                    <!-- Topbar Navbar -->
-                    <ul class="navbar-nav ml-auto">
+                    <!-- Right: Notifications, User Profile & Mobile Menu Toggler (Same Row) -->
+                    <ul class="unified-right-actions order-xl-3 ml-auto ml-xl-2">
 
                         @auth
                         @php
@@ -314,11 +503,11 @@
                             $notificationsList = $topbarNotifications ?? collect();
                         @endphp
                         <!-- Nav Item - Push & In-App Notifications -->
-                        <li class="nav-item dropdown no-arrow mx-1">
+                        <li class="nav-item dropdown no-arrow position-relative">
                             <a class="nav-link dropdown-toggle" href="#" id="alertsDropdown" role="button"
                                 data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"
                                 title="Pusat Notifikasi Tugas">
-                                <i id="notifBellIcon" class="fas fa-bell fa-fw {{ $unreadCount > 0 ? 'bell-ringing' : 'text-gray-600' }}"></i>
+                                <i id="notifBellIcon" class="fas fa-bell fa-fw {{ $unreadCount > 0 ? 'bell-ringing' : '' }}"></i>
                                 <span id="notifBadgeCount"
                                     class="badge badge-danger badge-counter {{ $unreadCount > 0 ? '' : 'd-none' }}">
                                     {{ $unreadCount > 9 ? '9+' : $unreadCount }}
@@ -417,17 +606,17 @@
                         </li>
                         @endauth
 
-                        <div class="topbar-divider d-none d-sm-block"></div>
+                        <div class="unified-divider d-none d-sm-block"></div>
 
                         <!-- Nav Item - User Information -->
                         <li class="nav-item dropdown no-arrow">
                             <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button"
                                 data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-                                <span class="mr-2 d-none d-lg-inline text-gray-600 small">{{ Auth::user()->name ?? 'User' }}</span>
-                                <img class="img-profile rounded-circle"
+                                <span class="mr-2 d-none d-sm-inline unified-user-name" title="{{ Auth::user()->name ?? 'User' }}">{{ Auth::user()->name ?? 'User' }}</span>
+                                <img class="img-profile rounded-circle unified-user-avatar"
                                     src="{{ Auth::user()->foto_url ?? asset('sbadmin2/img/undraw_profile.svg') }}"
                                     alt="{{ Auth::user()->name ?? 'User' }}"
-                                    style="object-fit: cover; width: 32px; height: 32px;">
+                                    style="object-fit: cover; width: 30px; height: 30px; border: 2px solid rgba(255,255,255,0.45);">
                             </a>
                             <!-- Dropdown - User Information -->
                             <div class="dropdown-menu dropdown-menu-right shadow animated--grow-in"
@@ -454,10 +643,140 @@
                             </div>
                         </li>
 
+                        <!-- Simple Minimize / Expand Navbar Toggle -->
+                        <li class="nav-item ml-1">
+                            <button type="button"
+                                    id="btnMinimizeNavbar"
+                                    class="navbar-minimize-btn"
+                                    title="Perkecil Navigasi Bar"
+                                    aria-label="Perkecil Navigasi Bar"
+                                    aria-pressed="false">
+                                <i class="fas fa-chevron-up"></i>
+                            </button>
+                        </li>
+
+                        <!-- Mobile Menu Toggler -->
+                        <li class="nav-item d-xl-none ml-1">
+                            <button id="sidebarToggleTop"
+                                    class="btn btn-sm text-white border border-light rounded-pill px-2 py-1"
+                                    type="button"
+                                    data-toggle="collapse"
+                                    data-target="#horizontalMenuCollapse"
+                                    aria-controls="horizontalMenuCollapse"
+                                    aria-expanded="false"
+                                    aria-label="Buka Menu Navigasi">
+                                <i class="fa fa-bars"></i>
+                            </button>
+                        </li>
                     </ul>
 
+                    <!-- Center: Horizontal Navigation Menu List -->
+                    <div class="collapse navbar-collapse order-xl-2" id="horizontalMenuCollapse">
+                        <ul class="sidebar-nav-center horizontal-nav-list">
+                            <!-- Nav Item - Dashboard -->
+                            <li class="nav-item {{ $menuDashboard ?? '' }}">
+                                <a class="nav-link" href="{{ route('dashboard') }}" title="Dashboard">
+                                    <span class="sidebar-icon-box s-icon-dashboard">
+                                        <i class="fas fa-chart-line"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Dashboard</span>
+                                </a>
+                            </li>
+
+                            @if(Auth::user() && Auth::user()->jabatan === 'Admin')
+                            <!-- Nav Item - Users -->
+                            <li class="nav-item {{ $menuAdminUser ?? '' }}">
+                                <a class="nav-link" href="{{ route('user.index') }}" title="Data User">
+                                    <span class="sidebar-icon-box s-icon-users">
+                                        <i class="fas fa-users-cog"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Data User</span>
+                                </a>
+                            </li>
+
+                            <!-- Nav Item - Tugas -->
+                            <li class="nav-item {{ $menuAdminTugas ?? '' }}">
+                                <a class="nav-link" href="{{ route('tugas.index') }}" title="Data Tugas (Delegasi)">
+                                    <span class="sidebar-icon-box s-icon-tugas">
+                                        <i class="fas fa-clipboard-check"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Data Tugas (Delegasi)</span>
+                                    @if(($sidebarPendingCount ?? 0) > 0)
+                                        <span class="badge badge-warning text-dark font-weight-bold sidebar-badge-count" title="Menunggu konfirmasi / permohonan">
+                                            {{ $sidebarPendingCount }}
+                                        </span>
+                                    @endif
+                                </a>
+                            </li>
+
+                            <!-- Nav Item - Delegasikan Tugas Baru (Admin) -->
+                            <li class="nav-item {{ $menuDelegasiBaru ?? '' }}">
+                                <a class="nav-link" href="{{ route('tugas.create') }}" title="Delegasikan Tugas Baru">
+                                    <span class="sidebar-icon-box s-icon-delegasi">
+                                        <i class="fas fa-rocket"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Delegasikan Tugas Baru</span>
+                                </a>
+                            </li>
+                            @endif
+
+                            @if(Auth::user() && in_array(Auth::user()->jabatan, ['Kepala Sub Bagian', 'Panitera Muda'], true))
+                            <!-- Nav Item - Daftar Tugas & Delegasi -->
+                            <li class="nav-item {{ $menuAdminTugas ?? ($menuKasubbagTugas ?? ($menuPetugasTugas ?? '')) }}">
+                                <a class="nav-link" href="{{ route('tugas.index') }}" title="Data Tugas & Delegasi">
+                                    <span class="sidebar-icon-box s-icon-tugas">
+                                        <i class="fas fa-clipboard-check"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Data Tugas &amp; Delegasi</span>
+                                    @if(($sidebarPendingCount ?? 0) > 0)
+                                        <span class="badge badge-warning text-dark font-weight-bold sidebar-badge-count" title="Tugas aktif / perlu perhatian">
+                                            {{ $sidebarPendingCount }}
+                                        </span>
+                                    @endif
+                                </a>
+                            </li>
+
+                            <!-- Nav Item - Delegasikan Tugas Baru -->
+                            <li class="nav-item {{ $menuDelegasiBaru ?? '' }}">
+                                <a class="nav-link" href="{{ route('tugas.create') }}" title="Delegasikan Tugas Baru">
+                                    <span class="sidebar-icon-box s-icon-delegasi">
+                                        <i class="fas fa-rocket"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Delegasikan Tugas Baru</span>
+                                </a>
+                            </li>
+                            @endif
+
+                            @if(Auth::user() && Auth::user()->jabatan === 'Petugas')
+                            <!-- Nav Item - Tugas Saya -->
+                            <li class="nav-item {{ $menuPetugasTugas ?? '' }}">
+                                <a class="nav-link" href="{{ route('tugas.index') }}" title="Data Tugas Saya">
+                                    <span class="sidebar-icon-box s-icon-tugas">
+                                        <i class="fas fa-clipboard-check"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Data Tugas Saya</span>
+                                    @if(($sidebarPendingCount ?? 0) > 0)
+                                        <span class="badge badge-warning text-dark font-weight-bold sidebar-badge-count" title="Tugas aktif Anda">
+                                            {{ $sidebarPendingCount }}
+                                        </span>
+                                    @endif
+                                </a>
+                            </li>
+                            @endif
+
+                            <!-- Nav Item - Petunjuk Aplikasi -->
+                            <li class="nav-item {{ $menuPetunjuk ?? '' }}">
+                                <a class="nav-link" href="{{ route('petunjuk.index') }}" title="Petunjuk Aplikasi">
+                                    <span class="sidebar-icon-box s-icon-petunjuk">
+                                        <i class="fas fa-compass"></i>
+                                    </span>
+                                    <span class="nav-menu-label">Petunjuk Aplikasi</span>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </nav>
-                <!-- End of Topbar -->
+                <!-- End of Unified Horizontal Navigation Bar -->
 
                 <!-- Begin Page Content -->
                 <div class="container-fluid">
@@ -872,7 +1191,7 @@
                         updateTopbarCounters(0);
                         if (dropdownListEl) {
                             dropdownListEl.querySelectorAll('.notif-item-unread').forEach(function (el) {
-                                el.classList.remove('notif-item-unread', 'notif-accent-primary', 'notif-accent-success', 'notif-accent-warning', 'notif-accent-danger', 'notif-accent-info');
+                                el.classList.remove('notif-item-unread', 'notif-accent-primary', 'notif-accent-success', 'notif-accent-warning', 'notif-accent-danger', 'notif-accent-info', 'notif-accent-secondary');
                                 el.classList.add('notif-item-read');
                             });
                         }
@@ -921,6 +1240,44 @@
         })();
     </script>
     @endauth
+
+    <script>
+        (function () {
+            const navbar = document.getElementById('accordionSidebar');
+            const minBtn = document.getElementById('btnMinimizeNavbar');
+            if (!navbar || !minBtn) {
+                return;
+            }
+
+            const storageKey = 'simonter_navbar_minimized';
+            const iconEl = minBtn.querySelector('i');
+
+            function applyMinimizedState(isMin) {
+                navbar.classList.toggle('is-minimized', isMin);
+                minBtn.setAttribute('aria-pressed', isMin ? 'true' : 'false');
+                minBtn.setAttribute('title', isMin ? 'Perbesar Navigasi Bar' : 'Perkecil Navigasi Bar');
+                minBtn.setAttribute('aria-label', isMin ? 'Perbesar Navigasi Bar' : 'Perkecil Navigasi Bar');
+                if (iconEl) {
+                    iconEl.classList.toggle('fa-chevron-up', !isMin);
+                    iconEl.classList.toggle('fa-chevron-down', isMin);
+                }
+            }
+
+            try {
+                if (localStorage.getItem(storageKey) === '1') {
+                    applyMinimizedState(true);
+                }
+            } catch (e) {}
+
+            minBtn.addEventListener('click', function () {
+                const nextState = !navbar.classList.contains('is-minimized');
+                applyMinimizedState(nextState);
+                try {
+                    localStorage.setItem(storageKey, nextState ? '1' : '0');
+                } catch (e) {}
+            });
+        })();
+    </script>
 
     @stack('scripts')
 </body>

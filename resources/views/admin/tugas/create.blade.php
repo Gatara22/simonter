@@ -220,8 +220,9 @@
                                         $isAvailable = $petugas->status === 'Belum Ditugaskan';
                                     @endphp
                                     <div class="col-xl-4 col-md-6 mb-2 recipient-col-item"
-                                         data-search="{{ strtolower($petugas->name . ' ' . $petugas->nip . ' ' . $petugas->jabatan . ' ' . $petugas->status) }}"
+                                         data-search="{{ strtolower($petugas->name . ' ' . $petugas->nip . ' ' . $petugas->jabatan . ' ' . ($petugas->klasifikasi ?? '') . ' ' . $petugas->status) }}"
                                          data-jabatan="{{ $petugas->jabatan }}"
+                                         data-klasifikasi="{{ $petugas->klasifikasi ?? '' }}"
                                          data-status="{{ $petugas->status }}">
                                         <label class="recipient-card-item mb-0 {{ $isChecked ? 'is-selected' : '' }}" for="petugas_chk_{{ $petugas->id }}">
                                             <div class="custom-control custom-checkbox mr-2">
@@ -245,6 +246,11 @@
                                                     <span class="badge {{ $petugas->jabatan === 'Kepala Sub Bagian' ? 'badge-primary' : ($petugas->jabatan === 'Panitera Muda' ? 'badge-success' : 'badge-info') }}" style="font-size: 0.65rem;">
                                                         {{ $petugas->jabatan }}
                                                     </span>
+                                                    @if($petugas->klasifikasi)
+                                                        <span class="badge {{ $petugas->klasifikasi === 'Pimpinan' ? 'badge-warning text-dark' : ($petugas->klasifikasi === 'Kepaniteraan' ? 'badge-success' : 'badge-primary') }}" style="font-size: 0.65rem;">
+                                                            {{ $petugas->klasifikasi }}
+                                                        </span>
+                                                    @endif
                                                     <span class="badge {{ $isAvailable ? 'badge-secondary' : 'badge-success' }}" style="font-size: 0.65rem;">
                                                         {{ $petugas->status }}
                                                     </span>
@@ -265,6 +271,42 @@
                         <i class="fas fa-info-circle text-primary mr-1"></i>
                         Centang satu atau beberapa nama di atas. Setiap penerima yang dipilih akan menerima delegasi tugas, push notifikasi, serta statusnya otomatis diperbarui menjadi <strong>Sedang Bertugas</strong>.
                     </small>
+
+                    <div id="crossUnitApprovalNotice" class="alert alert-warning border-left-warning small mt-2 d-none" style="border-left: 4px solid #f59e0b;">
+                        <i class="fas fa-user-check mr-1"></i>
+                        <strong>Peraturan Delegasi Lintas Bidang:</strong> Anda memilih petugas dari bidang yang berbeda. Tugas akan berstatus <strong>Menunggu Persetujuan Atasan</strong> dan memerlukan verifikasi dari <span id="crossUnitApproverName" class="font-weight-bold">Atasan Unit Terkait</span> terlebih dahulu sebelum diteruskan ke petugas.
+                    </div>
+
+                    <div class="mt-3 p-3 bg-light rounded border">
+                        <div class="small font-weight-bold text-gray-800 mb-2">
+                            <i class="fas fa-network-wired text-primary mr-1"></i> Mode Delegasi Jika Memilih Lebih dari 1 Penerima:
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-2 mb-md-0">
+                                <div class="custom-control custom-radio">
+                                    <input type="radio" id="mode_delegasi_terpisah" name="mode_delegasi" value="terpisah" class="custom-control-input" {{ old('mode_delegasi', 'terpisah') === 'terpisah' ? 'checked' : '' }}>
+                                    <label class="custom-control-label small font-weight-bold text-gray-900" for="mode_delegasi_terpisah">
+                                        Delegasi Terpisah per Penerima
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.76rem;">
+                                        Setiap pegawai yang dipilih mendapat 1 kartu tugas masing-masing secara independen.
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="custom-control custom-radio">
+                                    <input type="radio" id="mode_delegasi_kolaborasi" name="mode_delegasi" value="kolaborasi" class="custom-control-input" {{ old('mode_delegasi') === 'kolaborasi' ? 'checked' : '' }}>
+                                    <label class="custom-control-label small font-weight-bold text-primary" for="mode_delegasi_kolaborasi">
+                                        <i class="fas fa-users mr-1"></i> 1 Tugas Kolaborasi Multi-Petugas
+                                    </label>
+                                    <div class="text-muted" style="font-size: 0.76rem;">
+                                        Semua penerima bergabung dalam 1 Detail Tugas &amp; Ruang Chat Progres bersama (penerima ke-1 sebagai PIC Utama).
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     @error('petugas_id')
                         <div class="text-danger small font-weight-bold mt-1">{{ $message }}</div>
                     @enderror
@@ -321,13 +363,28 @@
         const searchInput = document.getElementById('searchRecipientInput');
         const colItems = document.querySelectorAll('.recipient-col-item');
 
+        const crossUnitNotice = document.getElementById('crossUnitApprovalNotice');
+        const crossUnitApproverName = document.getElementById('crossUnitApproverName');
+        const currentDelegatorUnit = @json(Auth::user()?->getEffectiveKlasifikasi());
+        const currentDelegatorRole = @json(Auth::user()?->jabatan);
+
         function syncSelectionUI() {
             let count = 0;
+            let neededApprovers = [];
             checkboxes.forEach(function (chk) {
                 const card = chk.closest('.recipient-card-item');
+                const col = chk.closest('.recipient-col-item');
                 if (chk.checked) {
                     count++;
                     if (card) card.classList.add('is-selected');
+                    const recipientUnit = col ? (col.getAttribute('data-klasifikasi') || '') : '';
+                    if (currentDelegatorRole !== 'Admin' && currentDelegatorUnit !== 'Pimpinan') {
+                        if (currentDelegatorUnit === 'Kesekretariatan' && recipientUnit === 'Kepaniteraan' && !neededApprovers.includes('Panitera Muda')) {
+                            neededApprovers.push('Panitera Muda');
+                        } else if (currentDelegatorUnit === 'Kepaniteraan' && recipientUnit === 'Kesekretariatan' && !neededApprovers.includes('Kepala Sub Bagian')) {
+                            neededApprovers.push('Kepala Sub Bagian');
+                        }
+                    }
                 } else {
                     if (card) card.classList.remove('is-selected');
                 }
@@ -337,6 +394,14 @@
                 badgeEl.className = count > 0
                     ? 'badge badge-primary px-3 py-1 font-weight-bold'
                     : 'badge badge-secondary px-3 py-1 font-weight-bold';
+            }
+            if (crossUnitNotice && crossUnitApproverName) {
+                if (neededApprovers.length > 0) {
+                    crossUnitApproverName.textContent = neededApprovers.join(' / ');
+                    crossUnitNotice.classList.remove('d-none');
+                } else {
+                    crossUnitNotice.classList.add('d-none');
+                }
             }
         }
 

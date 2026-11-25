@@ -36,12 +36,27 @@
                 </div>
                 <div class="card-body">
                     <h5 class="font-weight-bold text-gray-900">{{ $tugas->judul }}</h5>
+                    <div class="mb-2">
+                        @if(($tugas->klasifikasi ?? 'Kesekretariatan') === 'Kepaniteraan')
+                            <span class="badge badge-success px-2 py-1"><i class="fas fa-balance-scale mr-1"></i> Kepaniteraan</span>
+                        @else
+                            <span class="badge badge-primary px-2 py-1"><i class="fas fa-building mr-1"></i> Kesekretariatan</span>
+                        @endif
+                    </div>
                     <p class="text-muted small mb-2">
-                        <i class="fas fa-user-shield mr-1"></i> Didelegasikan oleh: <strong>{{ $tugas->admin->name ?? 'Admin' }}</strong>
+                        <i class="fas fa-user-shield mr-1"></i> Didelegasikan oleh: <strong>{{ $tugas->admin->name ?? 'Pemberi Tugas' }}</strong>
+                        <span class="badge badge-light border ml-1">{{ $tugas->admin->jabatan ?? 'Admin' }}</span>
                     </p>
                     <p class="text-muted small mb-3">
                         <i class="fas fa-calendar-alt mr-1"></i> Batas Selesai: <strong>{{ $tugas->tanggal_selesai ? $tugas->tanggal_selesai->format('d/m/Y') : '-' }}</strong>
                     </p>
+
+                    @if($tugas->status === 'HOLD')
+                        <div class="alert alert-secondary border-left-dark py-2 px-3 small" style="border-left: 4px solid #475569;">
+                            <strong><i class="fas fa-pause-circle mr-1"></i> Status Tugas: HOLD</strong><br>
+                            Tugas sedang ditunda sementara (HOLD). Durasi penundaan tidak dihitung sebagai keterlambatan performa.
+                        </div>
+                    @endif
 
                     <h6 class="font-weight-bold text-gray-800 border-bottom pb-1 small">Petunjuk Tugas:</h6>
                     <div class="p-2 bg-light rounded text-gray-800 small mb-3" style="white-space: pre-line;">
@@ -50,7 +65,7 @@
 
                     @if($tugas->file_tugas)
                         <div class="alert alert-info py-2 px-3 small">
-                            <i class="fas fa-paperclip mr-1"></i> Lampiran dari Admin:
+                            <i class="fas fa-paperclip mr-1"></i> Lampiran dari Pemberi Tugas:
                             <a href="{{ asset('storage/' . $tugas->file_tugas) }}" target="_blank" class="font-weight-bold d-block mt-1">
                                 <i class="fas fa-download mr-1"></i> {{ $tugas->file_tugas_name ?? 'Unduh Dokumen Tugas' }}
                             </a>
@@ -59,7 +74,7 @@
 
                     @if($tugas->catatan_admin)
                         <div class="alert alert-warning py-2 px-3 small">
-                            <strong class="d-block"><i class="fas fa-exclamation-circle mr-1"></i> Catatan Revisi dari Admin:</strong>
+                            <strong class="d-block"><i class="fas fa-exclamation-circle mr-1"></i> Catatan Evaluasi / Revisi Pemberi Tugas:</strong>
                             <div class="mt-1" style="white-space: pre-line;">{{ $tugas->catatan_admin }}</div>
                         </div>
                     @endif
@@ -72,7 +87,7 @@
             <div class="card shadow">
                 <div class="card-header py-3">
                     <h6 class="m-0 font-weight-bold text-success">
-                        <i class="fas fa-paper-plane mr-1"></i> Formulir Tindak Lanjut & Kirim Balik ke Admin
+                        <i class="fas fa-paper-plane mr-1"></i> Formulir Tindak Lanjut &amp; Kirim Balik ke Pemberi Tugas
                     </h6>
                 </div>
                 <div class="card-body">
@@ -133,7 +148,7 @@
                                     <i class="fas fa-link mr-1 text-info"></i> 2. Tautan / Link Evidence (Google Drive, Cloud Storage, dll.)
                                 </label>
                                 <input type="url" class="form-control @error('link_evidence') is-invalid @enderror" id="link_evidence" name="link_evidence" value="{{ old('link_evidence', $tugas->link_evidence) }}" placeholder="Contoh: https://drive.google.com/drive/folders/...">
-                                <small class="form-text text-muted">Pastikan izin akses tautan Google Drive / Cloud disetel agar dapat dibuka oleh Admin.</small>
+                                <small class="form-text text-muted">Pastikan izin akses tautan Google Drive / Cloud disetel agar dapat dibuka oleh Pemberi Tugas / Admin.</small>
                                 @error('link_evidence')
                                     <div class="invalid-feedback">{{ $message }}</div>
                                 @enderror
@@ -150,8 +165,8 @@
                                 <a href="{{ route('tugas.show', $tugas->id) }}" class="btn btn-secondary mr-2">
                                     <i class="fas fa-times mr-1"></i> Batal
                                 </a>
-                                <button type="submit" class="btn btn-success">
-                                    <i class="fas fa-paper-plane mr-1"></i> Kirim Balik ke Admin
+                                <button type="submit" class="btn btn-success font-weight-bold">
+                                    <i class="fas fa-paper-plane mr-1"></i> Kirim Balik ke Pemberi Tugas
                                 </button>
                             </div>
                         </div>
@@ -161,4 +176,27 @@
         </div>
     </div>
 @endsection
+
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const fileInput = document.getElementById('file_evidence');
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                const label = this.nextElementSibling;
+                if (this.files && this.files.length > 0) {
+                    const file = this.files[0];
+                    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+                    if (label) {
+                        label.textContent = file.name + ' (' + sizeMb + ' MB)';
+                    }
+                    if (file.size > 10 * 1024 * 1024) {
+                        alert('Ukuran berkas melebihi batas maksimal 10 MB. Silakan pilih file yang lebih kecil atau unggah melalui Link Evidence.');
+                    }
+                }
+            });
+        }
+    });
+</script>
+@endpush
 

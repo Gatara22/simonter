@@ -1,6 +1,21 @@
 @extends('layouts.app')
 
 @section('content')
+    <style>
+        @media (min-width: 1200px) {
+            .col-xl-fifth {
+                flex: 0 0 20%;
+                max-width: 20%;
+            }
+        }
+        .deadline-alert-card {
+            cursor: pointer;
+        }
+        .deadline-alert-card.has-urgent-deadline {
+            background: linear-gradient(135deg, #ffffff 0%, #fff5f5 100%);
+        }
+    </style>
+
     <!-- Page Heading & Period Filter -->
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <div>
@@ -13,24 +28,43 @@
             </p>
         </div>
 
-        <div class="d-flex align-items-center mt-3 mt-sm-0">
+        <div class="d-flex flex-wrap align-items-center mt-3 mt-sm-0" style="gap: 8px;">
+            <!-- Filter Klasifikasi Dropdown -->
+            <div class="dropdown">
+                <button class="btn btn-sm btn-white bg-white border shadow-sm dropdown-toggle text-gray-700 font-weight-bold" type="button" id="dropdownKlasifikasi" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                    <i class="fas fa-sitemap text-success mr-1"></i> Klasifikasi: {{ $klasifikasiLabel ?? 'Semua Klasifikasi' }}
+                </button>
+                <div class="dropdown-menu dropdown-menu-right shadow animated--fade-in" aria-labelledby="dropdownKlasifikasi">
+                    <h6 class="dropdown-header font-weight-bold text-success">Pilih Klasifikasi Tugas:</h6>
+                    <a class="dropdown-item {{ empty($klasifikasi) ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => $periode]) }}">
+                        <i class="fas fa-layer-group fa-sm fa-fw mr-2 text-gray-400"></i> Semua Klasifikasi
+                    </a>
+                    <a class="dropdown-item {{ ($klasifikasi ?? null) === 'Kesekretariatan' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => $periode, 'klasifikasi' => 'Kesekretariatan']) }}">
+                        <i class="fas fa-building fa-sm fa-fw mr-2 text-primary"></i> Kesekretariatan
+                    </a>
+                    <a class="dropdown-item {{ ($klasifikasi ?? null) === 'Kepaniteraan' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => $periode, 'klasifikasi' => 'Kepaniteraan']) }}">
+                        <i class="fas fa-balance-scale fa-sm fa-fw mr-2 text-success"></i> Kepaniteraan
+                    </a>
+                </div>
+            </div>
+
             <!-- Filter Periode Dropdown -->
-            <div class="dropdown mr-2">
+            <div class="dropdown">
                 <button class="btn btn-sm btn-white bg-white border shadow-sm dropdown-toggle text-gray-700 font-weight-bold" type="button" id="dropdownPeriode" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
                     <i class="fas fa-calendar-alt text-primary mr-1"></i> Periode: {{ $periodeLabel }}
                 </button>
                 <div class="dropdown-menu dropdown-menu-right shadow animated--fade-in" aria-labelledby="dropdownPeriode">
                     <h6 class="dropdown-header font-weight-bold text-primary">Pilih Rentang Waktu:</h6>
-                    <a class="dropdown-item {{ $periode === 'semua' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => 'semua']) }}">
+                    <a class="dropdown-item {{ $periode === 'semua' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', array_filter(['periode' => 'semua', 'klasifikasi' => $klasifikasi ?? null])) }}">
                         <i class="fas fa-infinity fa-sm fa-fw mr-2 text-gray-400"></i> Semua Waktu
                     </a>
-                    <a class="dropdown-item {{ $periode === 'bulan_ini' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => 'bulan_ini']) }}">
+                    <a class="dropdown-item {{ $periode === 'bulan_ini' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', array_filter(['periode' => 'bulan_ini', 'klasifikasi' => $klasifikasi ?? null])) }}">
                         <i class="fas fa-calendar-day fa-sm fa-fw mr-2 text-gray-400"></i> Bulan Ini ({{ \Carbon\Carbon::now()->translatedFormat('F Y') }})
                     </a>
-                    <a class="dropdown-item {{ $periode === '3_bulan' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => '3_bulan']) }}">
+                    <a class="dropdown-item {{ $periode === '3_bulan' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', array_filter(['periode' => '3_bulan', 'klasifikasi' => $klasifikasi ?? null])) }}">
                         <i class="fas fa-calendar-week fa-sm fa-fw mr-2 text-gray-400"></i> 3 Bulan Terakhir
                     </a>
-                    <a class="dropdown-item {{ $periode === 'tahun_ini' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', ['periode' => 'tahun_ini']) }}">
+                    <a class="dropdown-item {{ $periode === 'tahun_ini' ? 'active font-weight-bold' : '' }}" href="{{ route('dashboard', array_filter(['periode' => 'tahun_ini', 'klasifikasi' => $klasifikasi ?? null])) }}">
                         <i class="fas fa-calendar fa-sm fa-fw mr-2 text-gray-400"></i> Tahun Ini ({{ \Carbon\Carbon::now()->format('Y') }})
                     </a>
                 </div>
@@ -41,7 +75,7 @@
                     <i class="fas fa-plus fa-sm text-white-50 mr-1"></i> Delegasikan Tugas
                 </a>
             @elseif($isKasubbag ?? false)
-                <a href="{{ route('tugas.create') }}" class="btn btn-sm btn-primary shadow-sm mr-2">
+                <a href="{{ route('tugas.create') }}" class="btn btn-sm btn-primary shadow-sm">
                     <i class="fas fa-plus fa-sm text-white-50 mr-1"></i> Delegasikan Tugas
                 </a>
                 <a href="{{ route('tugas.index') }}" class="btn btn-sm btn-info shadow-sm">
@@ -64,88 +98,159 @@
         </div>
     @endif
 
+    @if(session('error'))
+        <div class="alert alert-danger alert-dismissible fade show shadow-sm" role="alert">
+            <i class="fas fa-exclamation-circle mr-1"></i> {{ session('error') }}
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+    @endif
+
+    @if(($isAdmin || ($isKasubbag ?? false)) && ($pendingPermohonanCount ?? 0) > 0)
+        <div class="alert alert-warning border-left-warning shadow-sm d-flex flex-wrap align-items-center justify-content-between" role="alert">
+            <div class="small text-gray-900">
+                <i class="fas fa-hand-paper text-warning mr-2"></i>
+                Terdapat <strong>{{ $pendingPermohonanCount }}</strong> permohonan ceklist petugas (<strong>HOLD / Perpanjangan Masa Pengerjaan</strong>) yang menunggu persetujuan Anda.
+            </div>
+            <a href="{{ route('tugas.index', array_filter(['permohonan' => 'menunggu', 'klasifikasi' => $klasifikasi ?? null])) }}" class="btn btn-sm btn-warning text-dark font-weight-bold shadow-sm mt-2 mt-sm-0">
+                <i class="fas fa-eye mr-1"></i> Tinjau Permohonan
+            </a>
+        </div>
+    @endif
+
     <!-- 1. Primary Volume Cards -->
     <div class="row">
-        <!-- Card 1: Total Tugas -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body py-2">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
-                                {{ $isAdmin ? 'Total Tugas Terdaftar' : 'Total Tugas Ditugaskan' }}
+        <!-- Card 1: Tugas Mendekati Deadline (0-2 Hari) -->
+        <div class="col-xl-fifth col-md-6 mb-4">
+            <a href="#modalTugasMendekatiDeadline"
+               role="button"
+               data-toggle="modal"
+               data-target="#modalTugasMendekatiDeadline"
+               id="cardMendekatiDeadline"
+               class="text-decoration-none d-block h-100">
+                <div class="card border-left-danger shadow h-100 py-2 card-hover-lift deadline-alert-card {{ ($tugasMendekatiDeadlineCount ?? 0) > 0 ? 'has-urgent-deadline' : '' }}">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">
+                                    Mendekati Deadline (0-2 Hari)
+                                </div>
+                                <div class="h4 mb-0 font-weight-bold {{ ($tugasMendekatiDeadlineCount ?? 0) > 0 ? 'text-danger' : 'text-gray-800' }}">
+                                    {{ $tugasMendekatiDeadlineCount ?? 0 }}
+                                </div>
+                                @if(($tugasMendekatiDeadlineCount ?? 0) > 0)
+                                    <small class="text-danger font-weight-bold">
+                                        <i class="fas fa-mouse-pointer mr-1"></i>Klik lihat daftar tugas
+                                    </small>
+                                @else
+                                    <small class="text-muted">Tidak ada tugas mendesak</small>
+                                @endif
                             </div>
-                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $totalTugas ?? 0 }}</div>
-                            <small class="text-muted font-italic">{{ $periodeLabel }}</small>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
+                            <div class="col-auto">
+                                <i class="fas fa-hourglass-half fa-2x {{ ($tugasMendekatiDeadlineCount ?? 0) > 0 ? 'text-danger' : 'text-gray-300' }}" style="{{ ($tugasMendekatiDeadlineCount ?? 0) > 0 ? 'opacity: 0.45;' : '' }}"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
-        <!-- Card 2: Tugas Berjalan -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body py-2">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
-                                Dalam Proses Pengerjaan
+        <!-- Card 2: Total Tugas -->
+        <div class="col-xl-fifth col-md-6 mb-4">
+            <a href="{{ route('tugas.index', array_filter(['klasifikasi' => $klasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-primary shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">
+                                    {{ $isAdmin ? 'Total Tugas Terdaftar' : 'Total Tugas Ditugaskan' }}
+                                </div>
+                                <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $totalTugas ?? 0 }}</div>
+                                <small class="text-muted font-italic">{{ $periodeLabel }}</small>
                             </div>
-                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $tugasBerjalan ?? 0 }}</div>
-                            <small class="text-muted">Sedang dikerjakan petugas</small>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-spinner fa-2x text-gray-300"></i>
+                            <div class="col-auto">
+                                <i class="fas fa-clipboard-list fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
-        <!-- Card 3: Menunggu Konfirmasi -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body py-2">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
-                                Menunggu Verifikasi
+        <!-- Card 3: Tugas Berjalan -->
+        <div class="col-xl-fifth col-md-6 mb-4">
+            <a href="{{ route('tugas.index', array_filter(['status' => 'berjalan', 'klasifikasi' => $klasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-info shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-info text-uppercase mb-1">
+                                    Dalam Proses Pengerjaan
+                                </div>
+                                <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $tugasBerjalan ?? 0 }}</div>
+                                <small class="text-muted">Sedang dikerjakan petugas</small>
+                                @if(($tugasHold ?? 0) > 0)
+                                    <div class="mt-1">
+                                        <span class="badge badge-secondary px-2 py-0" style="background-color: #475569; font-size: 0.68rem;">
+                                            <i class="fas fa-pause-circle mr-1"></i>{{ $tugasHold }} HOLD
+                                        </span>
+                                    </div>
+                                @endif
                             </div>
-                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $tugasMenunggu ?? 0 }}</div>
-                            <small class="text-muted">Evidence siap diverifikasi</small>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-reply-all fa-2x text-gray-300"></i>
+                            <div class="col-auto">
+                                <i class="fas fa-spinner fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
         </div>
 
-        <!-- Card 4: Tugas Selesai -->
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body py-2">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
-                                Tugas Selesai & Terverifikasi
+        <!-- Card 4: Menunggu Konfirmasi -->
+        <div class="col-xl-fifth col-md-6 mb-4">
+            <a href="{{ route('tugas.index', array_filter(['status' => 'Menunggu Konfirmasi', 'klasifikasi' => $klasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-warning shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">
+                                    Menunggu Verifikasi
+                                </div>
+                                <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $tugasMenunggu ?? 0 }}</div>
+                                <small class="text-muted">Evidence siap diverifikasi</small>
                             </div>
-                            <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $tugasSelesai ?? 0 }}</div>
-                            <small class="text-success font-weight-bold">
-                                {{ $totalTugas > 0 ? round(($tugasSelesai / $totalTugas) * 100, 1) : 0 }}% Tuntas
-                            </small>
-                        </div>
-                        <div class="col-auto">
-                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                            <div class="col-auto">
+                                <i class="fas fa-reply-all fa-2x text-gray-300"></i>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            </a>
+        </div>
+
+        <!-- Card 5: Tugas Selesai -->
+        <div class="col-xl-fifth col-md-6 mb-4">
+            <a href="{{ route('tugas.index', array_filter(['status' => 'Selesai', 'klasifikasi' => $klasifikasi ?? null])) }}" class="text-decoration-none">
+                <div class="card border-left-success shadow h-100 py-2 card-hover-lift">
+                    <div class="card-body py-2">
+                        <div class="row no-gutters align-items-center">
+                            <div class="col mr-2">
+                                <div class="text-xs font-weight-bold text-success text-uppercase mb-1">
+                                    Tugas Selesai & Terverifikasi
+                                </div>
+                                <div class="h4 mb-0 font-weight-bold text-gray-800">{{ $tugasSelesai ?? 0 }}</div>
+                                <small class="text-success font-weight-bold">
+                                    {{ $totalTugas > 0 ? round(($tugasSelesai / $totalTugas) * 100, 1) : 0 }}% Tuntas
+                                </small>
+                            </div>
+                            <div class="col-auto">
+                                <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </a>
         </div>
     </div>
 
@@ -234,7 +339,7 @@
                         </div>
                     </div>
                     <small class="text-muted">
-                        {{ $tugasBerjalan + $tugasMenunggu + ($tugasPerluRevisi ?? 0) }} tugas aktif belum tuntas
+                        {{ $tugasBerjalan + $tugasMenunggu + ($tugasPerluRevisi ?? 0) + ($tugasHold ?? 0) }} tugas aktif belum tuntas
                     </small>
                 </div>
             </div>
@@ -329,9 +434,13 @@
                                 <span><i class="fas fa-circle text-info mr-1"></i> Sedang Dikerjakan</span>
                                 <strong class="text-gray-900">{{ $tugasBerjalan }}</strong>
                             </div>
-                            <div class="d-flex justify-content-between py-1">
+                            <div class="d-flex justify-content-between py-1 border-bottom">
                                 <span><i class="fas fa-circle text-primary mr-1"></i> Menunggu Konfirmasi</span>
                                 <strong class="text-gray-900">{{ $tugasMenunggu }}</strong>
+                            </div>
+                            <div class="d-flex justify-content-between py-1">
+                                <span><i class="fas fa-circle mr-1" style="color: #475569;"></i> HOLD (Ditunda)</span>
+                                <strong class="text-gray-900">{{ $tugasHold ?? 0 }}</strong>
                             </div>
                         </div>
                     </div>
@@ -383,7 +492,7 @@
         <div class="card shadow mb-4">
             <div class="card-header py-3 bg-white d-flex justify-content-between align-items-center">
                 <h6 class="m-0 font-weight-bold text-primary">
-                    <i class="fas fa-ranking-star mr-1 text-warning"></i> Matriks &amp; Peringkat Kinerja Seluruh Petugas
+                    <i class="fas fa-trophy mr-1 text-warning"></i> Matriks &amp; Peringkat Kinerja Seluruh Petugas
                 </h6>
                 <span class="badge badge-primary px-3 py-1 font-weight-bold">
                     {{ count($petugasStats) }} Petugas Terdaftar
@@ -421,13 +530,25 @@
                                         <div class="d-flex align-items-center">
                                             <img src="{{ $ps['foto_url'] }}" alt="{{ $ps['name'] }}" class="rounded-circle mr-2 border" style="width: 34px; height: 34px; object-fit: cover;">
                                             <div>
-                                                <div class="font-weight-bold text-gray-900">{{ $ps['name'] }}</div>
+                                                <div class="font-weight-bold text-gray-900">
+                                                    {{ $ps['name'] }}
+                                                    @if(!empty($ps['jabatan']))
+                                                        <span class="badge {{ $ps['jabatan'] === 'Kepala Sub Bagian' ? 'badge-primary' : ($ps['jabatan'] === 'Panitera Muda' ? 'badge-success' : 'badge-info') }} ml-1" style="font-size: 0.65rem;">
+                                                            {{ $ps['jabatan'] }}
+                                                        </span>
+                                                    @endif
+                                                </div>
                                                 <small class="text-muted">NIP: {{ $ps['nip'] }}</small>
                                             </div>
                                         </div>
                                     </td>
                                     <td class="text-center align-middle font-weight-bold">
                                         {{ $ps['total_tugas'] }} tugas
+                                        @if(($ps['kolaborasi_count'] ?? 0) > 0)
+                                            <div class="small text-info font-weight-normal" style="font-size: 0.7rem;">
+                                                <i class="fas fa-users mr-1"></i>{{ $ps['kolaborasi_count'] }} kolaborasi
+                                            </div>
+                                        @endif
                                     </td>
                                     <td class="text-center align-middle">
                                         <span class="badge badge-success px-2 py-1 font-weight-bold">
@@ -511,8 +632,8 @@
                     <div class="d-flex align-items-start text-muted">
                         <i class="fas fa-sticky-note text-gray-500 mr-2 mt-1 flex-shrink-0"></i>
                         <div style="line-height: 1.6;">
-                            <strong>Catatan:</strong> <em>Ketepatan waktu</em> = persentase tugas selesai yang tindak lanjutnya diserahkan sebelum/tepat pada batas waktu.
-                            <em>Rata-rata waktu</em> = rata-rata hari dari tanggal mulai hingga tindak lanjut diserahkan. Penilaian mengikuti filter periode yang dipilih.
+                            <strong>Catatan:</strong> <em>Ketepatan waktu</em> = persentase tugas selesai yang tindak lanjutnya diserahkan sebelum/tepat pada batas waktu (durasi berstatus <strong>HOLD</strong> dikecualikan dari keterlambatan).
+                            <em>Rata-rata waktu</em> = rata-rata hari pengerjaan aktif dari tanggal mulai hingga tindak lanjut diserahkan (tidak termasuk durasi <strong>HOLD</strong>). Pada tugas jenis <strong>Kolaborasi Multi-Petugas</strong>, setiap petugas yang terdelegasi dan memberikan minimal <strong>1 komentar atau lampiran</strong> pada ruang diskusi dihitung mengerjakan 1 tugas penuh dalam matriks &amp; peringkat kinerja. Penilaian mengikuti filter periode yang dipilih.
                         </div>
                     </div>
                 </div>
@@ -569,7 +690,7 @@
                                             <div>
                                                 <div class="font-weight-bold text-gray-900">
                                                     {{ $pm['name'] }}
-                                                    <span class="badge {{ $pm['jabatan'] === 'Admin' ? 'badge-primary' : 'badge-info' }} ml-1" style="font-size: 0.65rem;">
+                                                    <span class="badge {{ $pm['jabatan'] === 'Admin' ? 'badge-primary' : ($pm['jabatan'] === 'Panitera Muda' ? 'badge-success' : 'badge-info') }} ml-1" style="font-size: 0.65rem;">
                                                         {{ $pm['jabatan'] }}
                                                     </span>
                                                 </div>
@@ -715,9 +836,13 @@
                                 <span><i class="fas fa-circle text-info mr-1"></i> Sedang Dikerjakan</span>
                                 <strong class="text-gray-900">{{ $tugasBerjalan }} Tugas</strong>
                             </div>
-                            <div class="d-flex justify-content-between py-1">
+                            <div class="d-flex justify-content-between py-1 border-bottom">
                                 <span><i class="fas fa-circle text-primary mr-1"></i> Menunggu Konfirmasi Admin</span>
                                 <strong class="text-gray-900">{{ $tugasMenunggu }} Tugas</strong>
+                            </div>
+                            <div class="d-flex justify-content-between py-1">
+                                <span><i class="fas fa-circle mr-1" style="color: #475569;"></i> HOLD (Ditunda)</span>
+                                <strong class="text-gray-900">{{ $tugasHold ?? 0 }} Tugas</strong>
                             </div>
                         </div>
                     </div>
@@ -806,24 +931,46 @@
                                 <td class="text-center align-middle">{{ $loop->iteration }}</td>
                                 <td class="align-middle">
                                     <span class="font-weight-bold text-gray-900">{{ $t->judul }}</span>
+                                    <div class="mt-1">
+                                        @if(($t->klasifikasi ?? 'Kesekretariatan') === 'Kepaniteraan')
+                                            <span class="badge badge-success px-2 py-0" style="font-size: 0.68rem;">
+                                                <i class="fas fa-balance-scale mr-1"></i>Kepaniteraan
+                                            </span>
+                                        @else
+                                            <span class="badge badge-primary px-2 py-0" style="font-size: 0.68rem;">
+                                                <i class="fas fa-building mr-1"></i>Kesekretariatan
+                                            </span>
+                                        @endif
+                                    </div>
                                 </td>
                                 <td class="align-middle">
                                     {{ $isAdmin ? ($t->petugas->name ?? '-') : ($t->admin->name ?? 'Admin') }}
                                 </td>
                                 <td class="text-center align-middle">
                                     {{ $t->tanggal_selesai ? $t->tanggal_selesai->format('d/m/Y') : '-' }}
+                                    @if($t->status !== 'Selesai' && $t->status !== 'HOLD' && $t->tanggal_selesai && $t->tanggal_selesai->isPast() && ! $t->tanggal_selesai->isToday())
+                                        <div class="mt-1">
+                                            <span class="badge badge-danger" style="font-size: 0.65rem;">
+                                                <i class="fas fa-exclamation-triangle mr-1"></i>Melewati Deadline
+                                            </span>
+                                        </div>
+                                    @endif
                                 </td>
                                 <td class="text-center align-middle">
                                     @if($t->status === 'Didelegasikan')
                                         <span class="badge badge-info badge-pill px-2 py-1">Didelegasikan</span>
                                     @elseif($t->status === 'Sedang Dikerjakan')
                                         <span class="badge badge-primary badge-pill px-2 py-1">Sedang Dikerjakan</span>
+                                    @elseif($t->status === 'HOLD')
+                                        <span class="badge badge-secondary badge-pill px-2 py-1" style="background-color: #475569;"><i class="fas fa-pause-circle mr-1"></i>HOLD</span>
                                     @elseif($t->status === 'Menunggu Konfirmasi')
                                         <span class="badge badge-warning badge-pill px-2 py-1 text-dark">Menunggu Konfirmasi</span>
                                     @elseif($t->status === 'Selesai')
                                         <span class="badge badge-success badge-pill px-2 py-1">Selesai</span>
                                     @elseif($t->status === 'Perlu Revisi')
                                         <span class="badge badge-danger badge-pill px-2 py-1">Perlu Revisi</span>
+                                    @else
+                                        <span class="badge badge-secondary badge-pill px-2 py-1">{{ $t->status }}</span>
                                     @endif
                                 </td>
                                 <td class="text-center align-middle">
@@ -839,6 +986,152 @@
                         @endforelse
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Daftar Tugas Mendekati Deadline (0-2 Hari) -->
+    <div class="modal fade" id="modalTugasMendekatiDeadline" tabindex="-1" role="dialog" aria-labelledby="modalTugasMendekatiDeadlineLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title font-weight-bold" id="modalTugasMendekatiDeadlineLabel">
+                        <i class="fas fa-hourglass-half mr-2"></i>Daftar Tugas Mendekati Deadline (0-2 Hari)
+                        <span class="badge badge-light text-danger ml-2">{{ $tugasMendekatiDeadlineCount ?? 0 }} Tugas</span>
+                    </h5>
+                    <button type="button" class="close text-white" data-dismiss="modal" aria-label="Tutup">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex flex-wrap align-items-center justify-content-between mb-3" style="gap: 8px;">
+                        <p class="small text-muted mb-0">
+                            Menampilkan tugas aktif (belum berstatus <strong>Selesai</strong> atau <strong>HOLD</strong>) yang batas waktunya jatuh pada hari ini hingga 2 hari ke depan.
+                        </p>
+                        @if(!empty($klasifikasi))
+                            <span class="badge {{ $klasifikasi === 'Kepaniteraan' ? 'badge-success' : 'badge-primary' }} px-2 py-1">
+                                Klasifikasi: {{ $klasifikasi }}
+                            </span>
+                        @endif
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-hover mb-0" id="tableTugasMendekatiDeadline" width="100%" cellspacing="0">
+                            <thead class="bg-light text-center">
+                                <tr>
+                                    <th width="5%">No</th>
+                                    <th>Judul Tugas</th>
+                                    <th>{{ $isAdmin ? 'Petugas Pelaksana' : (($isKasubbag ?? false) ? 'Pemberi & Pelaksana' : 'Didelegasikan Oleh') }}</th>
+                                    <th width="18%">Batas Selesai</th>
+                                    <th width="16%">Status</th>
+                                    <th width="11%">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @forelse($tugasMendekatiDeadline ?? [] as $td)
+                                    @php
+                                        $daysLeft = $td->getDaysUntilDeadline();
+                                    @endphp
+                                    <tr>
+                                        <td class="text-center align-middle">{{ $loop->iteration }}</td>
+                                        <td class="align-middle">
+                                            <div class="font-weight-bold text-gray-900">{{ $td->judul }}</div>
+                                            <div class="mt-1 d-flex flex-wrap align-items-center" style="gap: 4px;">
+                                                @if(($td->klasifikasi ?? 'Kesekretariatan') === 'Kepaniteraan')
+                                                    <span class="badge badge-success px-2 py-0" style="font-size: 0.68rem;">
+                                                        <i class="fas fa-balance-scale mr-1"></i>Kepaniteraan
+                                                    </span>
+                                                @else
+                                                    <span class="badge badge-primary px-2 py-0" style="font-size: 0.68rem;">
+                                                        <i class="fas fa-building mr-1"></i>Kesekretariatan
+                                                    </span>
+                                                @endif
+                                                @if($td->kolaborator && $td->kolaborator->isNotEmpty())
+                                                    <span class="badge badge-info px-2 py-0" style="font-size: 0.68rem;" title="Kolaborator: {{ $td->kolaborator->pluck('name')->implode(', ') }}">
+                                                        <i class="fas fa-users mr-1"></i>+{{ $td->kolaborator->count() }} Kolaborator
+                                                    </span>
+                                                @endif
+                                            </div>
+                                        </td>
+                                        <td class="align-middle">
+                                            @if($isAdmin)
+                                                <span class="font-weight-bold text-gray-900">{{ $td->petugas->name ?? '-' }}</span>
+                                                @if($td->admin && $td->admin_id !== Auth::id())
+                                                    <div class="small text-info"><i class="fas fa-share mr-1"></i>Dari: {{ $td->admin->name }}</div>
+                                                @endif
+                                            @elseif($isKasubbag ?? false)
+                                                <div class="small"><span class="text-muted">Dari:</span> <strong>{{ $td->admin->name ?? 'Admin' }}</strong></div>
+                                                <div class="small"><span class="text-muted">Pelaksana:</span> <strong class="text-primary">{{ $td->petugas->name ?? '-' }}</strong></div>
+                                            @else
+                                                <span class="font-weight-bold text-gray-900">{{ $td->admin->name ?? 'Admin' }}</span>
+                                                @if((int) $td->petugas_id !== (int) Auth::id())
+                                                    <div class="mt-1">
+                                                        <span class="badge badge-info" style="font-size: 0.68rem;">
+                                                            <i class="fas fa-users mr-1"></i>Kolaborator (PIC: {{ $td->petugas->name ?? '-' }})
+                                                        </span>
+                                                    </div>
+                                                @endif
+                                            @endif
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            <div class="font-weight-bold text-gray-900">
+                                                {{ $td->tanggal_selesai ? $td->tanggal_selesai->format('d/m/Y') : '-' }}
+                                            </div>
+                                            @if($daysLeft !== null)
+                                                <div class="mt-1">
+                                                    @if($daysLeft <= 0)
+                                                        <span class="badge badge-danger px-2 py-0" style="font-size: 0.68rem;">
+                                                            <i class="fas fa-hourglass-end mr-1"></i>Deadline Hari Ini
+                                                        </span>
+                                                    @elseif($daysLeft === 1)
+                                                        <span class="badge badge-warning text-dark px-2 py-0" style="font-size: 0.68rem;">
+                                                            <i class="fas fa-hourglass-half mr-1"></i>Sisa 1 Hari
+                                                        </span>
+                                                    @else
+                                                        <span class="badge badge-info px-2 py-0" style="font-size: 0.68rem;">
+                                                            <i class="fas fa-hourglass-half mr-1"></i>Sisa {{ $daysLeft }} Hari
+                                                        </span>
+                                                    @endif
+                                                </div>
+                                            @endif
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            @if($td->status === 'Didelegasikan')
+                                                <span class="badge badge-info badge-pill px-2 py-1">Didelegasikan</span>
+                                            @elseif($td->status === 'Sedang Dikerjakan')
+                                                <span class="badge badge-primary badge-pill px-2 py-1">Sedang Dikerjakan</span>
+                                            @elseif($td->status === 'Menunggu Konfirmasi')
+                                                <span class="badge badge-warning badge-pill px-2 py-1 text-dark">Menunggu Konfirmasi</span>
+                                            @elseif($td->status === 'Perlu Revisi')
+                                                <span class="badge badge-danger badge-pill px-2 py-1">Perlu Revisi</span>
+                                            @else
+                                                <span class="badge badge-secondary badge-pill px-2 py-1">{{ $td->status }}</span>
+                                            @endif
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            <a href="{{ route('tugas.show', $td->id) }}" class="btn btn-sm btn-info" title="Lihat Rincian">
+                                                <i class="fas fa-eye mr-1"></i>Detail
+                                            </a>
+                                        </td>
+                                    </tr>
+                                @empty
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4 text-muted">
+                                            <i class="fas fa-check-circle fa-2x text-success mb-2 d-block"></i>
+                                            Tidak ada tugas yang mendekati deadline (0-2 hari) saat ini.
+                                        </td>
+                                    </tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light d-flex justify-content-between">
+                    <a href="{{ route('tugas.index', array_filter(['deadline' => 'mendekati', 'klasifikasi' => $klasifikasi ?? null])) }}" class="btn btn-sm btn-outline-danger font-weight-bold">
+                        <i class="fas fa-external-link-alt mr-1"></i> Buka di Halaman Data Tugas
+                    </a>
+                    <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Tutup</button>
+                </div>
             </div>
         </div>
     </div>
@@ -928,8 +1221,8 @@
                             labels: @json($chartDoughnutLabels),
                             datasets: [{
                                 data: @json($chartDoughnutData),
-                                backgroundColor: ['#1cc88a', '#f6c23e', '#36b9cc', '#4e73df', '#e74a3b'],
-                                hoverBackgroundColor: ['#17a673', '#dda20a', '#2c9faf', '#2e59d9', '#be2617'],
+                                backgroundColor: ['#1cc88a', '#f6c23e', '#36b9cc', '#4e73df', '#e74a3b', '#475569'],
+                                hoverBackgroundColor: ['#17a673', '#dda20a', '#2c9faf', '#2e59d9', '#be2617', '#334155'],
                                 hoverBorderColor: "rgba(234, 236, 244, 1)",
                             }]
                         },
@@ -1130,8 +1423,8 @@
                             labels: @json($chartDoughnutLabels),
                             datasets: [{
                                 data: @json($chartDoughnutData),
-                                backgroundColor: ['#1cc88a', '#f6c23e', '#36b9cc', '#4e73df', '#e74a3b'],
-                                hoverBackgroundColor: ['#17a673', '#dda20a', '#2c9faf', '#2e59d9', '#be2617'],
+                                backgroundColor: ['#1cc88a', '#f6c23e', '#36b9cc', '#4e73df', '#e74a3b', '#475569'],
+                                hoverBackgroundColor: ['#17a673', '#dda20a', '#2c9faf', '#2e59d9', '#be2617', '#334155'],
                                 hoverBorderColor: "rgba(234, 236, 244, 1)",
                             }]
                         },

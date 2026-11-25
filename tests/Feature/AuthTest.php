@@ -57,6 +57,26 @@ class AuthTest extends TestCase
     }
 
     /**
+     * Test users can authenticate using their email address in the identifier field.
+     */
+    public function test_users_can_authenticate_with_valid_email_and_password(): void
+    {
+        $user = User::factory()->create([
+            'email' => 'pegawai.simonter@example.com',
+            'password' => 'password123',
+        ]);
+
+        $response = $this->post(route('loginProses'), [
+            'nip' => 'pegawai.simonter@example.com',
+            'password' => 'password123',
+            'captcha_check' => '1',
+        ]);
+
+        $this->assertAuthenticatedAs($user);
+        $response->assertRedirect(route('dashboard'));
+    }
+
+    /**
      * Test login fails when "Saya bukan robot" captcha checkbox is not checked.
      */
     public function test_login_fails_when_captcha_checkbox_is_not_checked(): void

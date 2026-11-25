@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Tugas;
+use App\Models\TugasDiskusi;
+use App\Models\TugasLog;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Http\UploadedFile;
@@ -918,5 +920,486 @@ class TugasDelegationTest extends TestCase
             $kepaniteraanResponse->assertSee('Minutasi Berkas Perkara Gugatan');
             $kepaniteraanResponse->assertDontSee('Penyusunan RKAKL Kesekretariatan');
         }
+    }
+
+    /**
+     * Test only Admin and Pemberi Tugas can set or release HOLD status on a task.
+     */
+    public function test_only_admin_and_pemberi_tugas_can_set_and_release_hold_status(): void
+    {
+        $admin = User::factory()->create(['name' => 'Admin Utama', 'jabatan' => 'Admin']);
+        $pemberiKasubbag = User::factory()->create(['name' => 'Kasubbag Pemberi', 'jabatan' => 'Kepala Sub Bagian']);
+        $otherKasubbag = User::factory()->create(['name' => 'Kasubbag Lain', 'jabatan' => 'Kepala Sub Bagian']);
+        $petugas = User::factory()->create(['name' => 'Petugas Pelaksana', 'jabatan' => 'Petugas']);
+
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $pemberiKasubbag->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Sinkronisasi Server Backup',
+            'status' => 'Sedang Dikerjakan',
+        ]);
+
+        // 1. Petugas cannot set task to HOLD
+        $petugasHoldResp = $this->actingAs($petugas)->post(route('tugas.hold', $tugas->id), [
+            'action' => 'hold',
+            'catatan_hold' => 'Petugas mencoba hold sendiri.',
+        ]);
+        $petugasHoldResp->assertRedirect(route('tugas.index'));
+        $petugasHoldResp->assertSessionHas('error');
+        $tugas->refresh();
+        $this->assertEquals('Sedang Dikerjakan', $tugas->status);
+
+        // 2. Another Kasubbag who is NOT the delegator (pemberi tugas) cannot set task to HOLD
+        $otherHoldResp = $this->actingAs($otherKasubbag)->post(route('tugas.hold', $tugas->id), [
+            'action' => 'hold',
+            'catatan_hold' => 'Kasubbag lain mencoba hold.',
+        ]);
+        $otherHoldResp->assertRedirect(route('tugas.index'));
+        $otherHoldResp->assertSessionHas('error');
+        $tugas->refresh();
+        $this->assertEquals('Sedang Dikerjakan', $tugas->status);
+
+        // 3. Pemberi Tugas (Kasubbag Pemberi) CAN set task to HOLD
+        $pemberiHoldResp = $this->actingAs($pemberiKasubbag)->post(route('tugas.hold', $tugas->id), [
+            'action' => 'hold',
+            'catatan_hold' => 'Menunggu suku cadang harddisk dari vendor.',
+        ]);
+        $pemberiHoldResp->assertRedirect(route('tugas.show', $tugas->id));
+        $pemberiHoldResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertEquals('HOLD', $tugas->status);
+        $this->assertNotNull($tugas->hold_started_at);
+        $this->assertEquals('Menunggu suku cadang harddisk dari vendor.', $tugas->catatan_admin);
+
+        // Verify detail page shows HOLD badge and explanation
+        $showResp = $this->actingAs($pemberiKasubbag)->get(route('tugas.show', $tugas->id));
+        $showResp->assertStatus(200);
+        $showResp->assertSee('Tugas Sedang Berstatus HOLD');
+        $showResp->assertSee('Menunggu suku cadang harddisk dari vendor.');
+
+        // 4. Admin CAN release HOLD status and resume the task
+        $adminResumeResp = $this->actingAs($admin)->post(route('tugas.hold', $tugas->id), [
+            'action' => 'lanjutkan',
+            'catatan_hold' => 'Suku cadang sudah tiba, silakan lanjutkan.',
+        ]);
+        $adminResumeResp->assertRedirect(route('tugas.show', $tugas->id));
+        $adminResumeResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertEquals('Sedang Dikerjakan', $tugas->status);
+        $this->assertNull($tugas->hold_started_at);
+    }
+
+    /**
+     * Test Petugas can submit checklist request to HOLD task or extend deadline, and Pemberi Tugas can approve it.
+     */
+    public function test_petugas_can_submit_checklist_request_for_hold_and_deadline_extension_and_delegator_can_approve(): void
+    {
+        $kasubbag = User::factory()->create(['name' => 'Kasubbag Pemberi', 'jabatan' => 'Kepala Sub Bagian']);
+        $petugas = User::factory()->create(['name' => 'Petugas Pemohon', 'jabatan' => 'Petugas']);
+
+        $initialDeadline = now()->addDays(3)->format('Y-m-d');
+        $proposedDeadline = now()->addDays(7)->format('Y-m-d');
+
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $kasubbag->id,
+            'petugas_id' => $petugas->id,
+            'judul' => 'Pembaruan Jaringan LAN Ruang Arsip',
+            'status' => 'Sedang Dikerjakan',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => $initialDeadline,
+        ]);
+
+        // 1. Petugas views detail page and sees the Panel Ceklist Permohonan Petugas
+        $showResp = $this->actingAs($petugas)->get(route('tugas.show', $tugas->id));
+        $showResp->assertStatus(200);
+        $showResp->assertSee('Panel Ceklist Permohonan Petugas kepada Pemberi Tugas');
+        $showResp->assertSee('Meminta HOLD Tugas');
+        $showResp->assertSee('Meminta Edit Tugas untuk Memperpanjang Masa Pengerjaan');
+
+        // 2. Petugas submits checklist requesting BOTH Hold and Deadline Extension
+        $requestResp = $this->actingAs($petugas)->post(route('tugas.permohonan', $tugas->id), [
+            'jenis_permohonan' => ['hold', 'perpanjangan'],
+            'usulan_tanggal_selesai' => $proposedDeadline,
+            'catatan_permohonan' => 'Ruang arsip sedang direnovasi sehingga instalasi kabel harus ditunda dan diperpanjang 4 hari.',
+        ]);
+
+        $requestResp->assertRedirect(route('tugas.show', $tugas->id));
+        $requestResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertTrue($tugas->permohonan_hold);
+        $this->assertTrue($tugas->permohonan_perpanjangan);
+        $this->assertEquals($proposedDeadline, $tugas->usulan_tanggal_selesai->format('Y-m-d'));
+        $this->assertEquals('Menunggu Persetujuan', $tugas->status_permohonan);
+        $this->assertEquals(1, $kasubbag->unreadNotifications()->count());
+
+        // 3. Pemberi Tugas (Kasubbag) approves the checklist request -> Task becomes HOLD and deadline is extended
+        $approveResp = $this->actingAs($kasubbag)->post(route('tugas.permohonan.tanggapi', $tugas->id), [
+            'keputusan' => 'setujui',
+            'tanggal_selesai_baru' => $proposedDeadline,
+            'catatan_admin' => 'Permohonan disetujui, tugas di-HOLD selama renovasi dan deadline diperpanjang.',
+        ]);
+
+        $approveResp->assertRedirect(route('tugas.show', $tugas->id));
+        $approveResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertEquals('HOLD', $tugas->status);
+        $this->assertNotNull($tugas->hold_started_at);
+        $this->assertEquals($proposedDeadline, $tugas->tanggal_selesai->format('Y-m-d'));
+        $this->assertEquals('Disetujui', $tugas->status_permohonan);
+    }
+
+    /**
+     * Test Admin can create a collaborative multi-petugas task and manage collaborators on detail page.
+     */
+    public function test_admin_can_create_collaborative_multi_petugas_task_and_manage_kolaborator(): void
+    {
+        $admin = User::factory()->create(['name' => 'Admin Kolaborasi', 'jabatan' => 'Admin']);
+        $petugasA = User::factory()->create(['name' => 'Petugas PIC Utama', 'jabatan' => 'Petugas', 'status' => 'Belum Ditugaskan']);
+        $petugasB = User::factory()->create(['name' => 'Petugas Kolaborator B', 'jabatan' => 'Petugas', 'status' => 'Belum Ditugaskan']);
+        $petugasC = User::factory()->create(['name' => 'Petugas Kolaborator C', 'jabatan' => 'Petugas', 'status' => 'Belum Ditugaskan']);
+
+        $initialTaskCount = Tugas::count();
+
+        // 1. Admin creates 1 collaborative task for 2 officers using mode_delegasi = kolaborasi
+        $storeResp = $this->actingAs($admin)->post(route('tugas.store'), [
+            'judul' => 'Migrasi Database Kolaborasi Tim',
+            'klasifikasi' => 'Kesekretariatan',
+            'mode_delegasi' => 'kolaborasi',
+            'petugas_id' => [$petugasA->id, $petugasB->id],
+            'deskripsi' => 'Kerjakan migrasi bersama dalam 1 ruang diskusi.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(4)->format('Y-m-d'),
+        ]);
+
+        $storeResp->assertRedirect(route('tugas.index'));
+        $storeResp->assertSessionHas('success');
+
+        $this->assertSame($initialTaskCount + 1, Tugas::count());
+
+        $tugas = Tugas::where('judul', 'Migrasi Database Kolaborasi Tim')->latest('id')->firstOrFail();
+        $this->assertSame($petugasA->id, $tugas->petugas_id);
+        $this->assertTrue($tugas->isAssignedTo($petugasA));
+        $this->assertTrue($tugas->isAssignedTo($petugasB));
+        $this->assertFalse($tugas->isAssignedTo($petugasC));
+        $this->assertSame('Sedang Bertugas', $petugasA->fresh()->status);
+        $this->assertSame('Sedang Bertugas', $petugasB->fresh()->status);
+
+        // 2. Collaborating officer B sees the task in index & can view detail page
+        $indexRespB = $this->actingAs($petugasB)->get(route('tugas.index'));
+        $indexRespB->assertStatus(200);
+        $indexRespB->assertSee('Migrasi Database Kolaborasi Tim');
+
+        $showRespB = $this->actingAs($petugasB)->get(route('tugas.show', $tugas->id));
+        $showRespB->assertStatus(200);
+        $showRespB->assertSee('Ruang Diskusi');
+        $showRespB->assertSee('Petugas Kolaborator B');
+        $this->assertSame('Sedang Dikerjakan', $tugas->fresh()->status);
+
+        // 3. Unassigned officer C cannot view detail page
+        $showRespC = $this->actingAs($petugasC)->get(route('tugas.show', $tugas->id));
+        $showRespC->assertRedirect(route('tugas.index'));
+
+        // 4. Admin updates collaborators to swap B out and bring C in
+        $syncResp = $this->actingAs($admin)->post(route('tugas.kolaborator.sync', $tugas->id), [
+            'kolaborator_ids' => [$petugasC->id],
+        ]);
+        $syncResp->assertRedirect(route('tugas.show', $tugas->id));
+        $syncResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertFalse($tugas->isAssignedTo($petugasB));
+        $this->assertTrue($tugas->isAssignedTo($petugasC));
+        $this->assertSame('Belum Ditugaskan', $petugasB->fresh()->status);
+        $this->assertSame('Sedang Bertugas', $petugasC->fresh()->status);
+        $this->assertDatabaseHas('tugas_logs', [
+            'tugas_id' => $tugas->id,
+            'action' => 'kolaborator',
+        ]);
+    }
+
+    /**
+     * Test author and multiple officers can chat work progress without uploading evidence or triggering review.
+     */
+    public function test_author_and_multi_petugas_can_chat_progress_without_uploading_evidence(): void
+    {
+        $author = User::factory()->create(['name' => 'Kasubbag Author', 'jabatan' => 'Kepala Sub Bagian']);
+        $pic = User::factory()->create(['name' => 'Petugas Satu', 'jabatan' => 'Petugas']);
+        $kolaborator = User::factory()->create(['name' => 'Petugas Dua', 'jabatan' => 'Petugas']);
+
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $author->id,
+            'petugas_id' => $pic->id,
+            'judul' => 'Koordinasi Laporan Bulanan',
+            'status' => 'Sedang Dikerjakan',
+        ]);
+        $tugas->kolaborator()->attach($kolaborator->id);
+
+        // Collaborator posts text-only progress update (no file, no formal evidence)
+        $chatResp1 = $this->actingAs($kolaborator)->post(route('tugas.diskusi.store', $tugas->id), [
+            'pesan' => 'Tahap rekap data transaksi sudah mencapai 70 persen.',
+        ]);
+        $chatResp1->assertRedirect(route('tugas.show', $tugas->id).'#ruang-diskusi');
+        $chatResp1->assertSessionHas('success');
+
+        // Author replies in chat
+        $chatResp2 = $this->actingAs($author)->post(route('tugas.diskusi.store', $tugas->id), [
+            'pesan' => 'Bagus, lanjutkan validasi bagian lampiran sebelum finalisasi.',
+        ]);
+        $chatResp2->assertRedirect(route('tugas.show', $tugas->id).'#ruang-diskusi');
+
+        $tugas->refresh();
+        $this->assertSame('Sedang Dikerjakan', $tugas->status);
+        $this->assertSame(2, TugasDiskusi::where('tugas_id', $tugas->id)->count());
+        $this->assertSame(2, TugasLog::where('tugas_id', $tugas->id)->where('action', 'diskusi')->count());
+
+        $showResp = $this->actingAs($pic)->get(route('tugas.show', $tugas->id));
+        $showResp->assertStatus(200);
+        $showResp->assertSee('Tahap rekap data transaksi sudah mencapai 70 persen.');
+        $showResp->assertSee('Bagus, lanjutkan validasi bagian lampiran sebelum finalisasi.');
+    }
+
+    /**
+     * Test uploading a file in progress chat logs clickable URL in task logs without auto-transitioning status to review.
+     */
+    public function test_uploading_file_in_chat_logs_clickable_url_without_auto_review(): void
+    {
+        Storage::fake('public');
+
+        $author = User::factory()->create(['name' => 'Panitera Author', 'jabatan' => 'Panitera Muda']);
+        $pic = User::factory()->create(['name' => 'Petugas File Chat', 'jabatan' => 'Petugas']);
+
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $author->id,
+            'petugas_id' => $pic->id,
+            'judul' => 'Audit Berkas Perkara',
+            'status' => 'Sedang Dikerjakan',
+        ]);
+
+        $file = UploadedFile::fake()->create('progres_tahap_1.pdf', 150, 'application/pdf');
+
+        $resp = $this->actingAs($pic)->post(route('tugas.diskusi.store', $tugas->id), [
+            'pesan' => 'Berikut draf awal progres tahap 1 untuk dicek.',
+            'file_lampiran' => $file,
+        ]);
+
+        $resp->assertRedirect(route('tugas.show', $tugas->id).'#ruang-diskusi');
+        $resp->assertSessionHas('success');
+
+        $tugas->refresh();
+        // Status must NOT automatically transition to Menunggu Konfirmasi or Selesai
+        $this->assertSame('Sedang Dikerjakan', $tugas->status);
+        $this->assertNull($tugas->file_evidence);
+
+        $diskusi = TugasDiskusi::where('tugas_id', $tugas->id)->firstOrFail();
+        $this->assertNotNull($diskusi->file_path);
+        $this->assertSame('progres_tahap_1.pdf', $diskusi->file_name);
+        Storage::disk('public')->assertExists($diskusi->file_path);
+
+        $log = TugasLog::where('tugas_id', $tugas->id)->where('action', 'diskusi')->firstOrFail();
+        $this->assertSame('progres_tahap_1.pdf', $log->file_name);
+        $this->assertNotNull($log->file_url);
+        $this->assertStringContainsString('/storage/diskusi/', $log->file_url);
+
+        $showResp = $this->actingAs($author)->get(route('tugas.show', $tugas->id));
+        $showResp->assertStatus(200);
+        $showResp->assertSee($log->file_url);
+        $showResp->assertSee('progres_tahap_1.pdf');
+    }
+
+    /**
+     * Test only Author or Admin can close a task (Selesai), even when progress was only shared via chat.
+     */
+    public function test_only_author_or_admin_can_close_task_even_without_formal_evidence(): void
+    {
+        $author = User::factory()->create(['name' => 'Kasubbag Pemilik', 'jabatan' => 'Kepala Sub Bagian']);
+        $pic = User::factory()->create(['name' => 'Petugas Utama', 'jabatan' => 'Petugas', 'status' => 'Sedang Bertugas']);
+        $kolaborator = User::factory()->create(['name' => 'Petugas Pendukung', 'jabatan' => 'Petugas', 'status' => 'Sedang Bertugas']);
+
+        $tugas = Tugas::factory()->create([
+            'admin_id' => $author->id,
+            'petugas_id' => $pic->id,
+            'judul' => 'Finalisasi Dokumen Internal',
+            'status' => 'Sedang Dikerjakan',
+            'tanggal_tindak_lanjut' => null,
+        ]);
+        $tugas->kolaborator()->attach($kolaborator->id);
+
+        // 1. Primary PIC & Collaborator cannot close the task
+        foreach ([$pic, $kolaborator] as $officer) {
+            $attempt = $this->actingAs($officer)->post(route('tugas.verifikasi', $tugas->id), [
+                'status' => 'Selesai',
+                'catatan_admin' => 'Mencoba menutup tugas sendiri.',
+            ]);
+            $attempt->assertRedirect(route('tugas.index'));
+            $attempt->assertSessionHas('error');
+            $this->assertSame('Sedang Dikerjakan', $tugas->fresh()->status);
+        }
+
+        // 2. Author CAN declare the task Selesai (Closed) without formal evidence submission
+        $closeResp = $this->actingAs($author)->post(route('tugas.verifikasi', $tugas->id), [
+            'status' => 'Selesai',
+            'catatan_admin' => 'Hasil pekerjaan melalui diskusi sudah lengkap dan diterima.',
+        ]);
+
+        $closeResp->assertRedirect(route('tugas.show', $tugas->id));
+        $closeResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertSame('Selesai', $tugas->status);
+        $this->assertNotNull($tugas->tanggal_tindak_lanjut);
+        $this->assertSame('Belum Ditugaskan', $pic->fresh()->status);
+        $this->assertSame('Belum Ditugaskan', $kolaborator->fresh()->status);
+    }
+
+    /**
+     * Test Kesekretariatan delegator assigning a task to Kepaniteraan officer requires Panitera Muda verification & approval.
+     */
+    public function test_kesekretariatan_delegating_to_kepaniteraan_petugas_requires_panitera_muda_approval(): void
+    {
+        $kasubbagDelegator = User::factory()->create([
+            'name' => 'Kasubbag Kesekretariatan',
+            'jabatan' => 'Kepala Sub Bagian',
+            'klasifikasi' => 'Kesekretariatan',
+        ]);
+        $otherKasubbag = User::factory()->create([
+            'name' => 'Kasubbag Lain',
+            'jabatan' => 'Kepala Sub Bagian',
+            'klasifikasi' => 'Kesekretariatan',
+        ]);
+        $paniteraMuda = User::factory()->create([
+            'name' => 'Panitera Muda Penyetuju',
+            'jabatan' => 'Panitera Muda',
+            'klasifikasi' => 'Kepaniteraan',
+        ]);
+        $petugasKepaniteraan = User::factory()->create([
+            'name' => 'Petugas Unit Kepaniteraan',
+            'jabatan' => 'Petugas',
+            'klasifikasi' => 'Kepaniteraan',
+            'status' => 'Belum Ditugaskan',
+        ]);
+
+        // 1. Kasubbag delegates task to Kepaniteraan officer
+        $storeResp = $this->actingAs($kasubbagDelegator)->post(route('tugas.store'), [
+            'judul' => 'Verifikasi Berkas Lintas Bidang Kepaniteraan',
+            'petugas_id' => [$petugasKepaniteraan->id],
+            'deskripsi' => 'Mohon dukungan data register perkara bulanan.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(3)->format('Y-m-d'),
+        ]);
+
+        $storeResp->assertRedirect(route('tugas.index'));
+        $storeResp->assertSessionHas('success');
+
+        $tugas = Tugas::where('judul', 'Verifikasi Berkas Lintas Bidang Kepaniteraan')->latest('id')->firstOrFail();
+        $this->assertSame('Menunggu Persetujuan Atasan', $tugas->status);
+        $this->assertTrue($tugas->perlu_persetujuan_atasan);
+        $this->assertSame('Panitera Muda', $tugas->jabatan_atasan_penyetuju);
+        $this->assertSame('Menunggu Persetujuan', $tugas->status_persetujuan_atasan);
+        $this->assertSame('Belum Ditugaskan', $petugasKepaniteraan->fresh()->status);
+        $this->assertEquals(1, $paniteraMuda->unreadNotifications()->count());
+        $this->assertEquals(0, $petugasKepaniteraan->unreadNotifications()->count());
+
+        // 2. Officer cannot submit tindak lanjut before supervisor approves
+        $blockedTindakLanjut = $this->actingAs($petugasKepaniteraan)->get(route('tugas.tindak-lanjut', $tugas->id));
+        $blockedTindakLanjut->assertRedirect(route('tugas.show', $tugas->id));
+        $blockedTindakLanjut->assertSessionHas('error');
+
+        // 3. Wrong supervisor role (another Kasubbag) cannot approve
+        $wrongApproverResp = $this->actingAs($otherKasubbag)->post(route('tugas.persetujuan-atasan', $tugas->id), [
+            'keputusan' => 'setujui',
+        ]);
+        $wrongApproverResp->assertRedirect(route('tugas.show', $tugas->id));
+        $wrongApproverResp->assertSessionHas('error');
+        $this->assertSame('Menunggu Persetujuan Atasan', $tugas->fresh()->status);
+
+        // 4. Panitera Muda sees approval panel and approves the cross-unit delegation
+        $showPanmud = $this->actingAs($paniteraMuda)->get(route('tugas.show', $tugas->id));
+        $showPanmud->assertStatus(200);
+        $showPanmud->assertSee('Persetujuan Delegasi Lintas Bidang');
+        $showPanmud->assertSee('Setujui &amp; Teruskan ke Petugas', false);
+
+        $approveResp = $this->actingAs($paniteraMuda)->post(route('tugas.persetujuan-atasan', $tugas->id), [
+            'keputusan' => 'setujui',
+            'catatan_persetujuan_atasan' => 'Disetujui, silakan Petugas Kepaniteraan menindaklanjuti.',
+        ]);
+        $approveResp->assertRedirect(route('tugas.show', $tugas->id));
+        $approveResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertSame('Didelegasikan', $tugas->status);
+        $this->assertSame('Disetujui', $tugas->status_persetujuan_atasan);
+        $this->assertSame($paniteraMuda->id, $tugas->disetujui_atasan_oleh);
+        $this->assertNotNull($tugas->tanggal_persetujuan_atasan);
+        $this->assertSame('Sedang Bertugas', $petugasKepaniteraan->fresh()->status);
+        $this->assertEquals(1, $petugasKepaniteraan->unreadNotifications()->count());
+        $this->assertEquals(1, $kasubbagDelegator->unreadNotifications()->count());
+    }
+
+    /**
+     * Test Kepaniteraan delegator assigning a task to Kesekretariatan officer requires Kepala Sub Bagian approval and can be rejected.
+     */
+    public function test_kepaniteraan_delegating_to_kesekretariatan_petugas_requires_kasubbag_approval_and_can_be_rejected(): void
+    {
+        $panmudDelegator = User::factory()->create([
+            'name' => 'Panitera Muda Pendelegasi',
+            'jabatan' => 'Panitera Muda',
+            'klasifikasi' => 'Kepaniteraan',
+        ]);
+        $otherPanmud = User::factory()->create([
+            'name' => 'Panitera Muda Lain',
+            'jabatan' => 'Panitera Muda',
+            'klasifikasi' => 'Kepaniteraan',
+        ]);
+        $kasubbagPenyetuju = User::factory()->create([
+            'name' => 'Kasubbag Kesekretariatan Penyetuju',
+            'jabatan' => 'Kepala Sub Bagian',
+            'klasifikasi' => 'Kesekretariatan',
+        ]);
+        $petugasSekretariat = User::factory()->create([
+            'name' => 'Petugas Unit Kesekretariatan',
+            'jabatan' => 'Petugas',
+            'klasifikasi' => 'Kesekretariatan',
+            'status' => 'Belum Ditugaskan',
+        ]);
+
+        // 1. Panitera Muda delegates task to Kesekretariatan officer
+        $this->actingAs($panmudDelegator)->post(route('tugas.store'), [
+            'judul' => 'Permintaan Pengadaan ATK Persidangan',
+            'petugas_id' => [$petugasSekretariat->id],
+            'deskripsi' => 'Butuh pengadaan ATK segera untuk ruang sidang.',
+            'tanggal_mulai' => now()->format('Y-m-d'),
+            'tanggal_selesai' => now()->addDays(2)->format('Y-m-d'),
+        ])->assertRedirect(route('tugas.index'));
+
+        $tugas = Tugas::where('judul', 'Permintaan Pengadaan ATK Persidangan')->latest('id')->firstOrFail();
+        $this->assertSame('Menunggu Persetujuan Atasan', $tugas->status);
+        $this->assertSame('Kepala Sub Bagian', $tugas->jabatan_atasan_penyetuju);
+        $this->assertSame('Menunggu Persetujuan', $tugas->status_persetujuan_atasan);
+        $this->assertEquals(1, $kasubbagPenyetuju->unreadNotifications()->count());
+
+        // 2. Another Panitera Muda cannot approve a Kesekretariatan-bound task
+        $this->actingAs($otherPanmud)->post(route('tugas.persetujuan-atasan', $tugas->id), [
+            'keputusan' => 'setujui',
+        ])->assertRedirect(route('tugas.show', $tugas->id))->assertSessionHas('error');
+
+        // 3. Kepala Sub Bagian rejects the cross-unit delegation
+        $rejectResp = $this->actingAs($kasubbagPenyetuju)->post(route('tugas.persetujuan-atasan', $tugas->id), [
+            'keputusan' => 'tolak',
+            'catatan_persetujuan_atasan' => 'Anggaran triwulan ini sedang dibekukan, ajukan kembali bulan depan.',
+        ]);
+        $rejectResp->assertRedirect(route('tugas.show', $tugas->id));
+        $rejectResp->assertSessionHas('success');
+
+        $tugas->refresh();
+        $this->assertSame('Ditolak Atasan', $tugas->status);
+        $this->assertSame('Ditolak', $tugas->status_persetujuan_atasan);
+        $this->assertSame($kasubbagPenyetuju->id, $tugas->disetujui_atasan_oleh);
+        $this->assertSame('Belum Ditugaskan', $petugasSekretariat->fresh()->status);
+        $this->assertEquals(1, $panmudDelegator->unreadNotifications()->count());
+        $this->assertEquals(0, $petugasSekretariat->unreadNotifications()->count());
     }
 }

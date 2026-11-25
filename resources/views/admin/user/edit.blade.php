@@ -73,7 +73,7 @@
                 </div>
 
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-4">
                         <div class="form-group">
                             <label for="jabatan" class="font-weight-bold">Jabatan <span class="text-danger">*</span></label>
                             <select class="form-control @error('jabatan') is-invalid @enderror" id="jabatan" name="jabatan" required>
@@ -89,7 +89,22 @@
                         </div>
                     </div>
 
-                    <div class="col-md-6">
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label for="klasifikasi" class="font-weight-bold">Klasifikasi Unit <small class="text-muted font-weight-normal">(Opsional)</small></label>
+                            <select class="form-control @error('klasifikasi') is-invalid @enderror" id="klasifikasi" name="klasifikasi">
+                                <option value="">-- Belum Diatur (Kosong) --</option>
+                                <option value="Pimpinan" {{ old('klasifikasi', $user->klasifikasi) === 'Pimpinan' ? 'selected' : '' }}>Pimpinan</option>
+                                <option value="Kesekretariatan" {{ old('klasifikasi', $user->klasifikasi) === 'Kesekretariatan' ? 'selected' : '' }}>Kesekretariatan</option>
+                                <option value="Kepaniteraan" {{ old('klasifikasi', $user->klasifikasi) === 'Kepaniteraan' ? 'selected' : '' }}>Kepaniteraan</option>
+                            </select>
+                            @error('klasifikasi')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
                         <div class="form-group">
                             <label for="status" class="font-weight-bold">Status Penugasan <span class="text-danger">*</span></label>
                             <select class="form-control @error('status') is-invalid @enderror" id="status" name="status" required>

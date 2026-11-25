@@ -158,3 +158,26 @@
     </div>
 @endsection
 
+@push('scripts')
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const fileInput = document.getElementById('file_tugas');
+        if (fileInput) {
+            fileInput.addEventListener('change', function () {
+                const label = this.nextElementSibling;
+                if (this.files && this.files.length > 0) {
+                    const file = this.files[0];
+                    const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+                    if (label) {
+                        label.textContent = file.name + ' (' + sizeMb + ' MB)';
+                    }
+                    if (file.size > 10 * 1024 * 1024) {
+                        alert('Ukuran berkas melebihi batas maksimal 10 MB.');
+                    }
+                }
+            });
+        }
+    });
+</script>
+@endpush
+

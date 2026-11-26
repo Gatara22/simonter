@@ -101,26 +101,71 @@ class DashboardController extends Controller
                 $pSelesai = $tasksOfPetugas->where('status', 'Selesai');
                 $pSelesaiCount = $pSelesai->count();
 
-                $pDurasiTotal = 0;
+                $pDurasiTotal = 0.0;
+                $pDurasiKerjaTotal = 0.0;
+                $pTargetTotal = 0.0;
+                $pTargetKerjaTotal = 0.0;
+                $pSlaTotal = 0.0;
+                $pSlaKerjaTotal = 0.0;
+                $pDurasiKalenderList = [];
+                $pDurasiKerjaList = [];
                 $pTepatWaktu = 0;
                 $pTerlambat = 0;
+                $pTotalRevisi = 0;
+                $pFirstPassCount = 0;
+                $pKolaborasiSelesaiCount = 0;
+                $pAuditTasks = [];
 
                 foreach ($pSelesai as $t) {
-                    $durasi = $t->getEffectiveWorkingDurationDays();
-                    $pDurasiTotal += $durasi;
+                    $durasiKal = $t->getEffectiveWorkingDurationDays();
+                    $durasiKerja = $t->getEffectiveBusinessWorkingDurationDays();
+                    $targetKal = $t->getTargetDurationDays(false);
+                    $targetKerja = $t->getTargetDurationDays(true);
+                    $slaKal = $t->getSlaEfficiencyPercent(false);
+                    $slaKerja = $t->getSlaEfficiencyPercent(true);
+
+                    $pDurasiTotal += $durasiKal;
+                    $pDurasiKerjaTotal += $durasiKerja;
+                    $pTargetTotal += $targetKal;
+                    $pTargetKerjaTotal += $targetKerja;
+                    $pSlaTotal += $slaKal;
+                    $pSlaKerjaTotal += $slaKerja;
+                    $pDurasiKalenderList[] = $durasiKal;
+                    $pDurasiKerjaList[] = $durasiKerja;
 
                     if ($t->isCompletedOnTime()) {
                         $pTepatWaktu++;
                     } else {
                         $pTerlambat++;
                     }
+
+                    $pTotalRevisi += $t->getRevisionCount();
+                    if ($t->isFirstPassCompleted()) {
+                        $pFirstPassCount++;
+                    }
+                    if ($t->isCollaborative()) {
+                        $pKolaborasiSelesaiCount++;
+                    }
+
+                    $pAuditTasks[] = $this->formatAuditTaskRow($t);
                 }
 
                 $pAvgDurasi = $pSelesaiCount > 0 ? round($pDurasiTotal / $pSelesaiCount, 1) : 0;
+                $pAvgDurasiKerja = $pSelesaiCount > 0 ? round($pDurasiKerjaTotal / $pSelesaiCount, 1) : 0;
+                $pMedianDurasi = $this->calculateMedian($pDurasiKalenderList);
+                $pMedianDurasiKerja = $this->calculateMedian($pDurasiKerjaList);
+                $pAvgTargetKalender = $pSelesaiCount > 0 ? round($pTargetTotal / $pSelesaiCount, 1) : null;
+                $pAvgTargetKerja = $pSelesaiCount > 0 ? round($pTargetKerjaTotal / $pSelesaiCount, 1) : null;
+                $pAvgSlaKalender = $pSelesaiCount > 0 ? round($pSlaTotal / $pSelesaiCount, 1) : null;
+                $pAvgSlaKerja = $pSelesaiCount > 0 ? round($pSlaKerjaTotal / $pSelesaiCount, 1) : null;
                 $pOnTimeRate = $pSelesaiCount > 0 ? round(($pTepatWaktu / $pSelesaiCount) * 100, 1) : 0;
+                $pFirstPassRate = $pSelesaiCount > 0 ? round(($pFirstPassCount / $pSelesaiCount) * 100, 1) : 0.0;
 
-                // Score for ranking: completed count weighted (10 pts) + on time rate (0.5 pts)
-                $score = ($pSelesaiCount * 10) + ($pOnTimeRate * 0.5);
+                // Balanced audit-ready score: rewards on-time completion (10), partial credit for late completion (4),
+                // timeliness reliability (0.4 * On-Time %), and first-pass quality (0.2 * First-Pass %)
+                $score = $pSelesaiCount > 0
+                    ? round(($pTepatWaktu * 10) + ($pTerlambat * 4) + ($pOnTimeRate * 0.4) + ($pFirstPassRate * 0.2), 1)
+                    : 0.0;
 
                 $predikat = 'Belum Ada Tugas Selesai';
                 if ($pSelesaiCount > 0) {
@@ -143,18 +188,37 @@ class DashboardController extends Controller
                     'foto_url' => $p->foto_url,
                     'total_tugas' => $pTotal,
                     'kolaborasi_count' => $pKolaborasiCount,
+                    'mandiri_selesai' => $pSelesaiCount - $pKolaborasiSelesaiCount,
+                    'kolaborasi_selesai' => $pKolaborasiSelesaiCount,
                     'selesai' => $pSelesaiCount,
                     'tepat_waktu' => $pTepatWaktu,
                     'terlambat' => $pTerlambat,
                     'on_time_rate' => $pOnTimeRate,
                     'avg_durasi' => $pAvgDurasi,
+                    'avg_durasi_kerja' => $pAvgDurasiKerja,
+                    'chart_avg_durasi' => $pSelesaiCount > 0 ? $pAvgDurasi : null,
+                    'chart_avg_durasi_kerja' => $pSelesaiCount > 0 ? $pAvgDurasiKerja : null,
+                    'median_durasi' => $pMedianDurasi,
+                    'median_durasi_kerja' => $pMedianDurasiKerja,
+                    'avg_target_kalender' => $pAvgTargetKalender,
+                    'avg_target_kerja' => $pAvgTargetKerja,
+                    'avg_sla_pct_kalender' => $pAvgSlaKalender,
+                    'avg_sla_pct_kerja' => $pAvgSlaKerja,
+                    'revisi_total' => $pTotalRevisi,
+                    'first_pass_count' => $pFirstPassCount,
+                    'first_pass_rate' => $pFirstPassRate,
                     'predikat' => $predikat,
                     'score' => $score,
+                    'audit_tasks' => $pAuditTasks,
                 ];
             }
 
-            // Sort leaderboard by score descending
-            usort($petugasStats, fn ($a, $b) => $b['score'] <=> $a['score']);
+            // Sort leaderboard by score descending, then on-time rate, then completed count
+            usort($petugasStats, function (array $a, array $b): int {
+                return ($b['score'] <=> $a['score'])
+                    ?: ($b['on_time_rate'] <=> $a['on_time_rate'])
+                    ?: ($b['selesai'] <=> $a['selesai']);
+            });
 
             $topPetugas = ! empty($petugasStats) && $petugasStats[0]['selesai'] > 0 ? $petugasStats[0] : null;
 
@@ -302,11 +366,45 @@ class DashboardController extends Controller
 
             $topPemberi = ! empty($pemberiStats) && $pemberiStats[0]['direspon'] > 0 ? $pemberiStats[0] : null;
 
-            // Chart 1: Bar Chart per Petugas (Top 7)
-            $top7Petugas = array_slice($petugasStats, 0, 7);
-            $chartPetugasLabels = array_column($top7Petugas, 'name');
-            $chartPetugasSelesai = array_column($top7Petugas, 'selesai');
-            $chartPetugasAvgDurasi = array_column($top7Petugas, 'avg_durasi');
+            // Chart 1: Komparasi Kinerja Petugas (Top 7 Aktif & Semua Petugas)
+            $activePetugas = array_values(array_filter($petugasStats, fn (array $ps): bool => $ps['selesai'] > 0));
+            $topActivePetugas = ! empty($activePetugas)
+                ? array_slice($activePetugas, 0, 7)
+                : array_slice($petugasStats, 0, 7);
+
+            $buildPetugasChartPayload = function (array $rows): array {
+                return [
+                    'ids' => array_column($rows, 'id'),
+                    'labels' => array_column($rows, 'name'),
+                    'selesai' => array_column($rows, 'selesai'),
+                    'tepat_waktu' => array_column($rows, 'tepat_waktu'),
+                    'terlambat' => array_column($rows, 'terlambat'),
+                    'on_time_rate' => array_column($rows, 'on_time_rate'),
+                    'first_pass_rate' => array_column($rows, 'first_pass_rate'),
+                    'revisi_total' => array_column($rows, 'revisi_total'),
+                    'mandiri_selesai' => array_column($rows, 'mandiri_selesai'),
+                    'kolaborasi_selesai' => array_column($rows, 'kolaborasi_selesai'),
+                    'score' => array_column($rows, 'score'),
+                    'durasi_kalender' => array_column($rows, 'chart_avg_durasi'),
+                    'durasi_kerja' => array_column($rows, 'chart_avg_durasi_kerja'),
+                    'median_kalender' => array_column($rows, 'median_durasi'),
+                    'median_kerja' => array_column($rows, 'median_durasi_kerja'),
+                    'target_kalender' => array_column($rows, 'avg_target_kalender'),
+                    'target_kerja' => array_column($rows, 'avg_target_kerja'),
+                    'sla_kalender' => array_column($rows, 'avg_sla_pct_kalender'),
+                    'sla_kerja' => array_column($rows, 'avg_sla_pct_kerja'),
+                    'tasks' => array_column($rows, 'audit_tasks'),
+                ];
+            };
+
+            $petugasChartDatasets = [
+                'top_aktif' => $buildPetugasChartPayload($topActivePetugas),
+                'semua' => $buildPetugasChartPayload($petugasStats),
+            ];
+
+            $chartPetugasLabels = $petugasChartDatasets['top_aktif']['labels'];
+            $chartPetugasSelesai = $petugasChartDatasets['top_aktif']['selesai'];
+            $chartPetugasAvgDurasi = array_column($topActivePetugas, 'avg_durasi');
 
             // Chart 2: Doughnut Chart Status Distribusi Ketepatan Waktu
             $chartDoughnutLabels = ['Selesai Tepat Waktu', 'Selesai Terlambat', 'Sedang Dikerjakan', 'Menunggu Konfirmasi', 'Perlu Revisi', 'HOLD'];
@@ -319,119 +417,176 @@ class DashboardController extends Controller
                 $tugasHold,
             ];
 
-            // Chart 3: Tren Penyelesaian Tugas & Rata-rata Waktu (1 Tahun, 6 Bulan, 3 Bulan, 1 Bulan)
+            // Chart 3: Tren Penyelesaian Tugas & Rata-rata Waktu (berdasarkan tanggal realisasi selesai)
             $oneYearAgo = Carbon::now()->subMonths(11)->startOfMonth();
-            $nowEnd = Carbon::now()->endOfMonth();
 
-            $allCompletedYear = Tugas::with('logs')
+            $allCompletedYear = Tugas::with(['petugas', 'admin', 'kolaborator', 'logs'])
                 ->where('status', 'Selesai')
                 ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
-                ->where(function ($q) use ($oneYearAgo, $nowEnd) {
-                    $q->whereBetween('tanggal_selesai', [$oneYearAgo->format('Y-m-d'), $nowEnd->format('Y-m-d')])
-                        ->orWhere(function ($q2) use ($oneYearAgo, $nowEnd) {
-                            $q2->whereNull('tanggal_selesai')
-                                ->whereBetween('created_at', [$oneYearAgo, $nowEnd]);
-                        });
+                ->where(function ($q) use ($oneYearAgo): void {
+                    $q->where('tanggal_tindak_lanjut', '>=', $oneYearAgo->copy()->subDays(30))
+                        ->orWhere('updated_at', '>=', $oneYearAgo->copy()->subDays(30))
+                        ->orWhereHas('logs', fn ($lq) => $lq->where('action', 'selesai')->where('created_at', '>=', $oneYearAgo));
                 })
                 ->get();
 
-            $calcPeriodStats = function ($tasks) {
+            $calcPeriodStats = function ($tasks): array {
                 $count = $tasks->count();
-                $durasiTotal = 0;
-                foreach ($tasks as $mt) {
-                    $durasiTotal += $mt->getEffectiveWorkingDurationDays();
+                if ($count === 0) {
+                    return [
+                        'selesai' => 0,
+                        'tepat_waktu' => 0,
+                        'terlambat' => 0,
+                        'on_time_rate' => null,
+                        'durasi' => null,
+                        'durasi_kerja' => null,
+                        'median_durasi' => null,
+                        'median_durasi_kerja' => null,
+                        'target_durasi' => null,
+                        'target_durasi_kerja' => null,
+                        'sla_efisiensi' => null,
+                        'sla_efisiensi_kerja' => null,
+                        'tasks' => [],
+                    ];
                 }
-                $avg = $count > 0 ? round($durasiTotal / $count, 1) : 0;
 
-                return [$count, $avg];
+                $durasiKalList = [];
+                $durasiKerjaList = [];
+                $targetKalList = [];
+                $targetKerjaList = [];
+                $slaKalList = [];
+                $slaKerjaList = [];
+                $tepatWaktu = 0;
+                $terlambat = 0;
+                $auditRows = [];
+
+                foreach ($tasks as $mt) {
+                    $dKal = $mt->getEffectiveWorkingDurationDays();
+                    $dKerja = $mt->getEffectiveBusinessWorkingDurationDays();
+                    $tKal = $mt->getTargetDurationDays(false);
+                    $tKerja = $mt->getTargetDurationDays(true);
+
+                    $durasiKalList[] = $dKal;
+                    $durasiKerjaList[] = $dKerja;
+                    $targetKalList[] = $tKal;
+                    $targetKerjaList[] = $tKerja;
+                    $slaKalList[] = $mt->getSlaEfficiencyPercent(false);
+                    $slaKerjaList[] = $mt->getSlaEfficiencyPercent(true);
+
+                    if ($mt->isCompletedOnTime()) {
+                        $tepatWaktu++;
+                    } else {
+                        $terlambat++;
+                    }
+
+                    $auditRows[] = $this->formatAuditTaskRow($mt);
+                }
+
+                return [
+                    'selesai' => $count,
+                    'tepat_waktu' => $tepatWaktu,
+                    'terlambat' => $terlambat,
+                    'on_time_rate' => round(($tepatWaktu / $count) * 100, 1),
+                    'durasi' => round(array_sum($durasiKalList) / $count, 1),
+                    'durasi_kerja' => round(array_sum($durasiKerjaList) / $count, 1),
+                    'median_durasi' => $this->calculateMedian($durasiKalList),
+                    'median_durasi_kerja' => $this->calculateMedian($durasiKerjaList),
+                    'target_durasi' => round(array_sum($targetKalList) / $count, 1),
+                    'target_durasi_kerja' => round(array_sum($targetKerjaList) / $count, 1),
+                    'sla_efisiensi' => round(array_sum($slaKalList) / $count, 1),
+                    'sla_efisiensi_kerja' => round(array_sum($slaKerjaList) / $count, 1),
+                    'tasks' => $auditRows,
+                ];
             };
 
-            // 1. Data 1 Tahun (12 bulan)
-            $yearLabels = [];
-            $yearSelesai = [];
-            $yearDurasi = [];
-            for ($i = 11; $i >= 0; $i--) {
-                $monthDate = Carbon::now()->subMonths($i);
-                $mStart = $monthDate->copy()->startOfMonth()->format('Y-m-d');
-                $mEnd = $monthDate->copy()->endOfMonth()->format('Y-m-d');
+            $trendKeys = [
+                'selesai',
+                'tepat_waktu',
+                'terlambat',
+                'on_time_rate',
+                'durasi',
+                'durasi_kerja',
+                'median_durasi',
+                'median_durasi_kerja',
+                'target_durasi',
+                'target_durasi_kerja',
+                'sla_efisiensi',
+                'sla_efisiensi_kerja',
+                'tasks',
+            ];
 
-                $mTasks = $allCompletedYear->filter(function ($t) use ($mStart, $mEnd) {
-                    $date = $t->tanggal_selesai ? Carbon::parse($t->tanggal_selesai)->format('Y-m-d') : Carbon::parse($t->created_at)->format('Y-m-d');
-
-                    return $date >= $mStart && $date <= $mEnd;
-                });
-
-                [$mCount, $mAvg] = $calcPeriodStats($mTasks);
-                $yearLabels[] = $monthDate->translatedFormat('M Y');
-                $yearSelesai[] = $mCount;
-                $yearDurasi[] = $mAvg;
+            // 1. Data 1 Tahun (12 bulan) berdasarkan tanggal realisasi selesai
+            $yearBucket = ['labels' => []];
+            foreach ($trendKeys as $tk) {
+                $yearBucket[$tk] = [];
             }
 
-            // 2. Data 6 Bulan (6 bulan terakhir)
-            $sixLabels = array_slice($yearLabels, -6);
-            $sixSelesai = array_slice($yearSelesai, -6);
-            $sixDurasi = array_slice($yearDurasi, -6);
+            for ($i = 11; $i >= 0; $i--) {
+                $monthDate = Carbon::now()->subMonths($i);
+                $mStart = $monthDate->copy()->startOfMonth();
+                $mEnd = $monthDate->copy()->endOfMonth();
 
-            // 3. Data 3 Bulan (3 bulan terakhir)
-            $threeLabels = array_slice($yearLabels, -3);
-            $threeSelesai = array_slice($yearSelesai, -3);
-            $threeDurasi = array_slice($yearDurasi, -3);
-
-            // 4. Data 1 Bulan (4 pekan terakhir dalam 28 hari)
-            $oneMonthLabels = [];
-            $oneMonthSelesai = [];
-            $oneMonthDurasi = [];
-            for ($w = 3; $w >= 0; $w--) {
-                $wStart = Carbon::now()->subDays(($w * 7) + 6)->startOfDay();
-                $wEnd = Carbon::now()->subDays($w * 7)->endOfDay();
-
-                $wTasks = $allCompletedYear->filter(function ($t) use ($wStart, $wEnd) {
-                    $d = Carbon::parse($t->tanggal_selesai ?? $t->created_at);
-
-                    return $d->between($wStart, $wEnd);
+                $mTasks = $allCompletedYear->filter(function (Tugas $t) use ($mStart, $mEnd): bool {
+                    return $t->getActualCompletionTime()->between($mStart, $mEnd);
                 });
 
-                [$wCount, $wAvg] = $calcPeriodStats($wTasks);
-                $oneMonthLabels[] = $wStart->translatedFormat('d M').' - '.$wEnd->translatedFormat('d M');
-                $oneMonthSelesai[] = $wCount;
-                $oneMonthDurasi[] = $wAvg;
+                $stats = $calcPeriodStats($mTasks);
+                $yearBucket['labels'][] = $monthDate->translatedFormat('M Y');
+                foreach ($trendKeys as $tk) {
+                    $yearBucket[$tk][] = $stats[$tk];
+                }
+            }
+
+            $sliceTrendBucket = function (array $source, int $length) use ($trendKeys): array {
+                $sliced = ['labels' => array_slice($source['labels'], -$length)];
+                foreach ($trendKeys as $tk) {
+                    $sliced[$tk] = array_slice($source[$tk], -$length);
+                }
+
+                return $sliced;
+            };
+
+            $sixBucket = $sliceTrendBucket($yearBucket, 6);
+            $threeBucket = $sliceTrendBucket($yearBucket, 3);
+
+            // 4. Data 1 Bulan (4 pekan kontinyu penuh 30 hari terakhir hingga hari ini)
+            $weekRanges = [
+                [29, 23],
+                [22, 16],
+                [15, 8],
+                [7, 0],
+            ];
+            $oneMonthBucket = ['labels' => []];
+            foreach ($trendKeys as $tk) {
+                $oneMonthBucket[$tk] = [];
+            }
+
+            foreach ($weekRanges as [$startOffset, $endOffset]) {
+                $wStart = Carbon::now()->subDays($startOffset)->startOfDay();
+                $wEnd = Carbon::now()->subDays($endOffset)->endOfDay();
+
+                $wTasks = $allCompletedYear->filter(function (Tugas $t) use ($wStart, $wEnd): bool {
+                    return $t->getActualCompletionTime()->between($wStart, $wEnd);
+                });
+
+                $stats = $calcPeriodStats($wTasks);
+                $oneMonthBucket['labels'][] = $wStart->translatedFormat('d M').' - '.$wEnd->translatedFormat('d M');
+                foreach ($trendKeys as $tk) {
+                    $oneMonthBucket[$tk][] = $stats[$tk];
+                }
             }
 
             $trendDatasets = [
-                '1_tahun' => [
-                    'label' => '1 Tahun',
-                    'subtitle' => '12 Bulan Terakhir',
-                    'labels' => $yearLabels,
-                    'selesai' => $yearSelesai,
-                    'durasi' => $yearDurasi,
-                ],
-                '6_bulan' => [
-                    'label' => '6 Bulan',
-                    'subtitle' => '6 Bulan Terakhir',
-                    'labels' => $sixLabels,
-                    'selesai' => $sixSelesai,
-                    'durasi' => $sixDurasi,
-                ],
-                '3_bulan' => [
-                    'label' => '3 Bulan',
-                    'subtitle' => '3 Bulan Terakhir',
-                    'labels' => $threeLabels,
-                    'selesai' => $threeSelesai,
-                    'durasi' => $threeDurasi,
-                ],
-                '1_bulan' => [
-                    'label' => '1 Bulan',
-                    'subtitle' => '4 Pekan Terakhir (28 Hari)',
-                    'labels' => $oneMonthLabels,
-                    'selesai' => $oneMonthSelesai,
-                    'durasi' => $oneMonthDurasi,
-                ],
+                '1_tahun' => array_merge(['label' => '1 Tahun', 'subtitle' => '12 Bulan Terakhir (Berdasarkan Realisasi Selesai)'], $yearBucket),
+                '6_bulan' => array_merge(['label' => '6 Bulan', 'subtitle' => '6 Bulan Terakhir (Berdasarkan Realisasi Selesai)'], $sixBucket),
+                '3_bulan' => array_merge(['label' => '3 Bulan', 'subtitle' => '3 Bulan Terakhir (Berdasarkan Realisasi Selesai)'], $threeBucket),
+                '1_bulan' => array_merge(['label' => '1 Bulan', 'subtitle' => '30 Hari Terakhir (4 Pekan Kontinyu)'], $oneMonthBucket),
             ];
 
             // For default display and backwards compatibility
-            $trendLabels = $sixLabels;
-            $trendSelesaiData = $sixSelesai;
-            $trendAvgDurasiData = $sixDurasi;
+            $trendLabels = $sixBucket['labels'];
+            $trendSelesaiData = $sixBucket['selesai'];
+            $trendAvgDurasiData = $sixBucket['durasi'];
 
             $recentTugas = Tugas::with(['petugas', 'admin', 'logs'])
                 ->when($klasifikasi !== null, fn ($q) => $q->where('klasifikasi', $klasifikasi))
@@ -483,6 +638,7 @@ class DashboardController extends Controller
                 'chartPetugasLabels' => $chartPetugasLabels,
                 'chartPetugasSelesai' => $chartPetugasSelesai,
                 'chartPetugasAvgDurasi' => $chartPetugasAvgDurasi,
+                'petugasChartDatasets' => $petugasChartDatasets,
                 'chartDoughnutLabels' => $chartDoughnutLabels,
                 'chartDoughnutData' => $chartDoughnutData,
                 'trendLabels' => $trendLabels,
@@ -655,5 +811,80 @@ class DashboardController extends Controller
         }
 
         return view('dashboard', $data);
+    }
+
+    /**
+     * Calculate exact median from an array of numeric values (returns null when empty).
+     *
+     * @param  array<int, float|int>  $values
+     */
+    private function calculateMedian(array $values): ?float
+    {
+        $count = count($values);
+        if ($count === 0) {
+            return null;
+        }
+
+        sort($values, SORT_NUMERIC);
+        $middle = intdiv($count, 2);
+
+        if ($count % 2 === 1) {
+            return round((float) $values[$middle], 1);
+        }
+
+        return round(((float) $values[$middle - 1] + (float) $values[$middle]) / 2, 1);
+    }
+
+    /**
+     * Format a completed task into a structured audit payload for drill-down chart modals.
+     *
+     * @return array{
+     *     id: int,
+     *     judul: string,
+     *     klasifikasi: string,
+     *     petugas_name: string,
+     *     admin_name: string,
+     *     is_kolaborasi: bool,
+     *     tanggal_mulai: string,
+     *     tanggal_deadline: string,
+     *     tanggal_selesai_aktual: string,
+     *     hold_days: float,
+     *     durasi_kalender: float,
+     *     durasi_kerja: float,
+     *     target_kalender: float,
+     *     target_kerja: float,
+     *     sla_pct_kalender: float,
+     *     sla_pct_kerja: float,
+     *     revisi_count: int,
+     *     tepat_waktu: bool,
+     *     url: string
+     * }
+     */
+    private function formatAuditTaskRow(Tugas $task): array
+    {
+        $completionTime = $task->getActualCompletionTime();
+        $finishForHold = Carbon::parse($task->tanggal_tindak_lanjut ?? $task->updated_at ?? $completionTime);
+
+        return [
+            'id' => $task->id,
+            'judul' => $task->judul,
+            'klasifikasi' => $task->klasifikasi ?? 'Kesekretariatan',
+            'petugas_name' => $task->petugas->name ?? '-',
+            'admin_name' => $task->admin->name ?? 'Admin',
+            'is_kolaborasi' => $task->isCollaborative(),
+            'tanggal_mulai' => $task->tanggal_mulai ? $task->tanggal_mulai->format('d/m/Y') : ($task->created_at ? $task->created_at->format('d/m/Y') : '-'),
+            'tanggal_deadline' => $task->tanggal_selesai ? $task->tanggal_selesai->format('d/m/Y') : '-',
+            'tanggal_selesai_aktual' => $completionTime->format('d/m/Y H:i'),
+            'hold_days' => $task->getHoldDurationDays($finishForHold),
+            'durasi_kalender' => $task->getEffectiveWorkingDurationDays(),
+            'durasi_kerja' => $task->getEffectiveBusinessWorkingDurationDays(),
+            'target_kalender' => $task->getTargetDurationDays(false),
+            'target_kerja' => $task->getTargetDurationDays(true),
+            'sla_pct_kalender' => $task->getSlaEfficiencyPercent(false),
+            'sla_pct_kerja' => $task->getSlaEfficiencyPercent(true),
+            'revisi_count' => $task->getRevisionCount(),
+            'tepat_waktu' => $task->isCompletedOnTime(),
+            'url' => route('tugas.show', $task->id),
+        ];
     }
 }

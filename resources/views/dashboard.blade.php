@@ -14,6 +14,12 @@
         .deadline-alert-card.has-urgent-deadline {
             background: linear-gradient(135deg, #ffffff 0%, #fff5f5 100%);
         }
+        .legend-collapse-toggle .legend-chevron {
+            transition: transform 0.2s ease;
+        }
+        .legend-collapse-toggle[aria-expanded="true"] .legend-chevron {
+            transform: rotate(180deg);
+        }
     </style>
 
     <!-- Page Heading & Period Filter -->
@@ -387,23 +393,49 @@
     @if($isAdmin)
         <!-- ADMIN CHARTS -->
         <div class="row">
-            <!-- Chart 1: Komparasi Kinerja Petugas (Bar Chart) -->
+            <!-- Chart 1: Komparasi Kinerja Petugas (Dual-Axis Stacked Bar + Line) -->
             <div class="col-xl-8 col-lg-7 mb-4">
                 <div class="card shadow h-100">
-                    <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between bg-white">
-                        <h6 class="m-0 font-weight-bold text-primary">
-                            <i class="fas fa-chart-bar mr-1"></i> Komparasi Tugas Selesai & Rata-rata Durasi Tiap Petugas
-                        </h6>
-                        <span class="badge badge-primary small">Top Petugas</span>
+                    <div class="card-header py-3 bg-white d-flex flex-wrap align-items-center justify-content-between" style="gap: 8px;">
+                        <div>
+                            <h6 class="m-0 font-weight-bold text-primary">
+                                <i class="fas fa-chart-bar mr-1"></i> Komparasi Tugas Selesai &amp; Rata-rata Durasi Tiap Petugas
+                            </h6>
+                            <small class="text-muted">Klik batang/titik petugas untuk audit daftar tugas penyusun</small>
+                        </div>
+                        <div class="d-flex flex-wrap align-items-center" style="gap: 6px;">
+                            <div class="btn-group btn-group-sm shadow-sm" role="group" id="petugasScopeBtnGroup" aria-label="Cakupan Petugas">
+                                <button type="button" class="btn btn-outline-primary active" data-scope="top_aktif">Top 7 Aktif</button>
+                                <button type="button" class="btn btn-outline-primary" data-scope="semua">Semua</button>
+                            </div>
+                            <div class="btn-group btn-group-sm shadow-sm" role="group" id="petugasDayModeBtnGroup" aria-label="Basis Hari Petugas">
+                                <button type="button" class="btn btn-outline-info active" data-day-mode="kalender">Hari Kalender</button>
+                                <button type="button" class="btn btn-outline-info" data-day-mode="kerja">Hari Kerja (Sen-Jum)</button>
+                            </div>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="chart-bar" style="position: relative; height: 320px;">
                             <canvas id="chartPetugasPerformance"></canvas>
                         </div>
                         <hr class="my-2">
-                        <div class="d-flex justify-content-around text-center small text-muted pt-2">
-                            <span><i class="fas fa-square mr-1" style="color: #4e73df;"></i> <strong>Batang Biru:</strong> Jumlah Tugas Selesai (Unit)</span>
-                            <span><i class="fas fa-square mr-1" style="color: #1cc88a;"></i> <strong>Batang Hijau:</strong> Rata-rata Durasi Pengerjaan (Hari)</span>
+                        <div class="d-flex flex-wrap justify-content-between align-items-center small text-muted pt-1" style="gap: 8px;">
+                            <div class="d-flex flex-wrap align-items-center" style="gap: 12px;">
+                                <span><i class="fas fa-square mr-1" style="color: #1cc88a;"></i> Tepat Waktu</span>
+                                <span><i class="fas fa-square mr-1" style="color: #f6c23e;"></i> Terlambat</span>
+                                <span><i class="fas fa-minus mr-1" style="color: #4e73df;"></i> Rata-rata Durasi (Sumbu Kanan)</span>
+                                <span><i class="fas fa-ellipsis-h mr-1" style="color: #0ea5e9;"></i> Median Durasi</span>
+                            </div>
+                            <button class="btn btn-xs btn-link p-0 font-weight-bold text-primary" type="button" data-toggle="collapse" data-target="#collapseMetodologiPetugas" aria-expanded="false" aria-controls="collapseMetodologiPetugas">
+                                <i class="fas fa-calculator mr-1"></i>Metodologi &amp; Rumus
+                            </button>
+                        </div>
+                        <div class="collapse mt-2" id="collapseMetodologiPetugas">
+                            <div class="p-2 bg-light border rounded small text-muted" style="font-size: 0.76rem; line-height: 1.55;">
+                                <div><strong>• Sumbu Y Kiri (Stacked Bar):</strong> Total tugas selesai per petugas (<em>Tepat Waktu</em> + <em>Terlambat</em>). Pada tugas kolaborasi multi-petugas, hanya petugas dengan minimal 1 komentar/lampiran yang dihitung.</div>
+                                <div><strong>• Sumbu Y Kanan (Garis):</strong> Rata-rata (<em>Mean</em>) &amp; <em>Median</em> durasi pengerjaan efektif (presisi 0,1 hari, mengecualikan durasi <strong>HOLD</strong>). Nilai <code>null</code> (tidak digambar) bila petugas belum menuntaskan tugas.</div>
+                                <div><strong>• Skor Peringkat Audit:</strong> <code>(Tepat Waktu × 10) + (Terlambat × 4) + (On-Time % × 0,4) + (First-Pass % × 0,2)</code>.</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -453,16 +485,20 @@
             <!-- Chart 3: Tren Penyelesaian Tugas & Rata-rata Waktu (1 Tahun, 6 Bulan, 3 Bulan, 1 Bulan) -->
             <div class="col-xl-12 mb-4">
                 <div class="card shadow">
-                    <div class="card-header py-3 bg-white d-flex flex-column flex-sm-row align-items-sm-center justify-content-between">
-                        <div class="mb-2 mb-sm-0">
+                    <div class="card-header py-3 bg-white d-flex flex-column flex-lg-row align-items-lg-center justify-content-between" style="gap: 8px;">
+                        <div class="mb-1 mb-lg-0">
                             <h6 class="m-0 font-weight-bold text-primary">
                                 <i class="fas fa-chart-line mr-1"></i> Tren Penyelesaian Tugas &amp; Rata-rata Waktu
                             </h6>
                             <span class="small text-muted" id="trendPeriodSubtitle">
-                                <i class="fas fa-calendar-alt text-gray-400 mr-1"></i> Periode: 6 Bulan Terakhir
+                                <i class="fas fa-calendar-alt text-gray-400 mr-1"></i> Periode: 6 Bulan Terakhir (Berdasarkan Realisasi Selesai)
                             </span>
                         </div>
-                        <div class="d-flex align-items-center">
+                        <div class="d-flex flex-wrap align-items-center" style="gap: 8px;">
+                            <div class="btn-group btn-group-sm shadow-sm" role="group" id="trendDayModeBtnGroup" aria-label="Basis Hari Tren">
+                                <button type="button" class="btn btn-outline-info active" data-day-mode="kalender">Hari Kalender</button>
+                                <button type="button" class="btn btn-outline-info" data-day-mode="kerja">Hari Kerja (Sen-Jum)</button>
+                            </div>
                             <div class="btn-group btn-group-sm shadow-sm" role="group" id="trendPeriodBtnGroup" aria-label="Pilihan Periode Tren">
                                 <button type="button" class="btn btn-outline-primary" data-period="1_tahun">
                                     <i class="fas fa-calendar mr-1 d-none d-md-inline"></i>1 Tahun
@@ -480,8 +516,29 @@
                         </div>
                     </div>
                     <div class="card-body">
-                        <div class="chart-area" style="position: relative; height: 280px;">
+                        <div class="chart-area" style="position: relative; height: 295px;">
                             <canvas id="chartMonthlyTrend"></canvas>
+                        </div>
+                        <hr class="my-2">
+                        <div class="d-flex flex-wrap justify-content-between align-items-center small text-muted pt-1" style="gap: 8px;">
+                            <div class="d-flex flex-wrap align-items-center" style="gap: 12px;">
+                                <span><i class="fas fa-square mr-1" style="color: #1cc88a;"></i> Tepat Waktu (Unit)</span>
+                                <span><i class="fas fa-square mr-1" style="color: #f6c23e;"></i> Terlambat (Unit)</span>
+                                <span><i class="fas fa-minus mr-1" style="color: #4e73df;"></i> Rata-rata Durasi (Hari)</span>
+                                <span><i class="fas fa-ellipsis-h mr-1" style="color: #0ea5e9;"></i> Median Durasi (Hari)</span>
+                                <span><i class="fas fa-ellipsis-h mr-1" style="color: #94a3b8;"></i> Rata-rata Target SLA (Hari)</span>
+                                <span class="text-info"><i class="fas fa-mouse-pointer mr-1"></i>Klik titik/batang untuk rincian tugas</span>
+                            </div>
+                            <button class="btn btn-xs btn-link p-0 font-weight-bold text-primary" type="button" data-toggle="collapse" data-target="#collapseMetodologiTren" aria-expanded="false" aria-controls="collapseMetodologiTren">
+                                <i class="fas fa-calculator mr-1"></i>Metodologi &amp; Rumus
+                            </button>
+                        </div>
+                        <div class="collapse mt-2" id="collapseMetodologiTren">
+                            <div class="p-2 bg-light border rounded small text-muted" style="font-size: 0.76rem; line-height: 1.55;">
+                                <div><strong>• Tanggal Pengelompokan Akuntabel:</strong> Tugas dicatat ke bulan/pekan berdasarkan <strong>tanggal realisasi selesai</strong> (timestamp verifikasi <em>Closed/Selesai</em>, atau waktu penyerahan tindak lanjut), bukan berdasarkan tanggal deadline rencana.</div>
+                                <div><strong>• Periode Tanpa Data (<code>N = 0</code>):</strong> Jika pada suatu bulan/pekan belum ada tugas selesai, nilai rata-rata/median durasi diperlakukan sebagai <code>null</code> (terputus) agar grafik tidak turun palsu ke angka 0 hari.</div>
+                                <div><strong>• Pembanding Outlier &amp; SLA:</strong> Garis <em>Median</em> membantu mendeteksi apakah rata-rata tertarik 1 tugas besar, sedangkan garis <em>Target SLA</em> menunjukkan batas rata-rata waktu rencana yang ditetapkan pemberi tugas.</div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -568,7 +625,17 @@
                                     </td>
                                     <td class="text-center align-middle">
                                         @if($ps['selesai'] > 0)
-                                            <strong class="text-gray-900">{{ $ps['avg_durasi'] }}</strong> <span class="text-muted small">Hari</span>
+                                            <div>
+                                                <strong class="text-gray-900">{{ $ps['avg_durasi'] }}</strong> <span class="text-muted small">Hari</span>
+                                            </div>
+                                            <div class="text-muted" style="font-size: 0.7rem;">
+                                                Kerja: {{ $ps['avg_durasi_kerja'] ?? $ps['avg_durasi'] }} hr | Med: {{ $ps['median_durasi'] ?? $ps['avg_durasi'] }} hr
+                                            </div>
+                                            @if(($ps['avg_sla_pct_kalender'] ?? null) !== null)
+                                                <div class="text-info font-weight-bold" style="font-size: 0.69rem;">
+                                                    SLA: {{ $ps['avg_sla_pct_kalender'] }}% target
+                                                </div>
+                                            @endif
                                         @else
                                             <span class="text-muted small">-</span>
                                         @endif
@@ -577,13 +644,18 @@
                                         @if($ps['selesai'] == 0)
                                             <span class="badge badge-light border text-muted">Belum Ada Selesai</span>
                                         @elseif($ps['on_time_rate'] >= 85 && $ps['avg_durasi'] <= 3)
-                                            <span class="badge badge-success px-2 py-1"><i class="fas fa-check-circle mr-1"></i> Sangat Cepat & Tepat</span>
+                                            <span class="badge badge-success px-2 py-1"><i class="fas fa-check-circle mr-1"></i> Sangat Cepat &amp; Tepat</span>
                                         @elseif($ps['on_time_rate'] >= 75)
                                             <span class="badge badge-info px-2 py-1"><i class="fas fa-thumbs-up mr-1"></i> Tepat Waktu</span>
                                         @elseif($ps['on_time_rate'] >= 50)
                                             <span class="badge badge-warning text-dark px-2 py-1"><i class="fas fa-clock mr-1"></i> Cukup Baik</span>
                                         @else
                                             <span class="badge badge-danger px-2 py-1"><i class="fas fa-exclamation-triangle mr-1"></i> Perlu Peningkatan</span>
+                                        @endif
+                                        @if($ps['selesai'] > 0)
+                                            <div class="text-muted mt-1" style="font-size: 0.7rem;">
+                                                Skor: <strong>{{ number_format($ps['score'], 1) }}</strong> | First-Pass: {{ $ps['first_pass_rate'] ?? 100 }}%
+                                            </div>
                                         @endif
                                     </td>
                                 </tr>
@@ -596,44 +668,60 @@
                     </table>
                 </div>
 
-                <!-- Keterangan Status Evaluasi Performa -->
-                <div class="mt-4 p-3 bg-light border rounded small">
-                    <div class="d-flex align-items-center font-weight-bold text-gray-800 mb-3">
-                        <i class="fas fa-info-circle text-primary mr-2"></i>
-                        <span>Keterangan Status Evaluasi Performa</span>
-                    </div>
-                    @php
-                        $evaluasiLegend = [
-                            ['class' => 'badge-success', 'icon' => 'fa-check-circle', 'label' => 'Sangat Cepat &amp; Tepat', 'desc' => 'Ketepatan waktu &ge; 85% dan rata-rata waktu pengerjaan &le; 3 hari.'],
-                            ['class' => 'badge-info', 'icon' => 'fa-thumbs-up', 'label' => 'Tepat Waktu', 'desc' => 'Ketepatan waktu &ge; 75%.'],
-                            ['class' => 'badge-warning text-dark', 'icon' => 'fa-clock', 'label' => 'Cukup Baik', 'desc' => 'Ketepatan waktu 50% &ndash; 74,9%.'],
-                            ['class' => 'badge-danger', 'icon' => 'fa-exclamation-triangle', 'label' => 'Perlu Peningkatan', 'desc' => 'Ketepatan waktu &lt; 50%.'],
-                            ['class' => 'badge-light border text-muted', 'icon' => 'fa-minus-circle', 'label' => 'Belum Ada Selesai', 'desc' => 'Petugas belum memiliki tugas berstatus Selesai pada periode terpilih.'],
-                        ];
-                    @endphp
-                    <div class="row">
-                        @foreach($evaluasiLegend as $legend)
-                            <div class="col-lg-6 mb-2">
-                                <div class="d-flex align-items-start">
-                                    <div class="flex-shrink-0" style="width: 170px;">
-                                        <span class="badge {{ $legend['class'] }} d-inline-flex align-items-center px-2 py-1" style="font-size: 0.75rem;">
-                                            <i class="fas {{ $legend['icon'] }} mr-1"></i>
-                                            <span>{!! $legend['label'] !!}</span>
-                                        </span>
+                <!-- Keterangan Status Evaluasi Performa (Collapsible) -->
+                <div class="mt-4">
+                    <button class="btn btn-sm btn-light border w-100 d-flex align-items-center justify-content-between text-left font-weight-bold text-gray-800 legend-collapse-toggle"
+                            type="button"
+                            data-toggle="collapse"
+                            data-target="#collapseKeteranganPetugas"
+                            aria-expanded="false"
+                            aria-controls="collapseKeteranganPetugas">
+                        <span>
+                            <i class="fas fa-info-circle text-primary mr-2"></i>Keterangan Status Evaluasi Performa
+                        </span>
+                        <span class="small text-primary font-weight-bold">
+                            Tampilkan / Sembunyikan <i class="fas fa-chevron-down ml-1 legend-chevron"></i>
+                        </span>
+                    </button>
+                    <div class="collapse mt-2" id="collapseKeteranganPetugas">
+                        <div class="p-3 bg-light border rounded small">
+                            @php
+                                $evaluasiLegend = [
+                                    ['class' => 'badge-success', 'icon' => 'fa-check-circle', 'label' => 'Sangat Cepat &amp; Tepat', 'desc' => 'Ketepatan waktu &ge; 85% dan rata-rata waktu pengerjaan &le; 3 hari.'],
+                                    ['class' => 'badge-info', 'icon' => 'fa-thumbs-up', 'label' => 'Tepat Waktu', 'desc' => 'Ketepatan waktu &ge; 75%.'],
+                                    ['class' => 'badge-warning text-dark', 'icon' => 'fa-clock', 'label' => 'Cukup Baik', 'desc' => 'Ketepatan waktu 50% &ndash; 74,9%.'],
+                                    ['class' => 'badge-danger', 'icon' => 'fa-exclamation-triangle', 'label' => 'Perlu Peningkatan', 'desc' => 'Ketepatan waktu &lt; 50%.'],
+                                    ['class' => 'badge-light border text-muted', 'icon' => 'fa-minus-circle', 'label' => 'Belum Ada Selesai', 'desc' => 'Petugas belum memiliki tugas berstatus Selesai pada periode terpilih.'],
+                                ];
+                            @endphp
+                            <div class="row">
+                                @foreach($evaluasiLegend as $legend)
+                                    <div class="col-lg-6 mb-2">
+                                        <div class="d-flex align-items-start">
+                                            <div class="flex-shrink-0" style="width: 170px;">
+                                                <span class="badge {{ $legend['class'] }} d-inline-flex align-items-center px-2 py-1" style="font-size: 0.75rem;">
+                                                    <i class="fas {{ $legend['icon'] }} mr-1"></i>
+                                                    <span>{!! $legend['label'] !!}</span>
+                                                </span>
+                                            </div>
+                                            <div class="text-muted pl-2" style="line-height: 1.6;">
+                                                {!! $legend['desc'] !!}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="text-muted pl-2" style="line-height: 1.6;">
-                                        {!! $legend['desc'] !!}
-                                    </div>
+                                @endforeach
+                            </div>
+                            <hr class="my-2">
+                            <div class="d-flex align-items-start text-muted">
+                                <i class="fas fa-sticky-note text-gray-500 mr-2 mt-1 flex-shrink-0"></i>
+                                <div style="line-height: 1.6;">
+                                    <strong>Catatan Audit:</strong> <em>Ketepatan waktu</em> = persentase tugas selesai yang tindak lanjutnya diserahkan sebelum/tepat pada batas waktu (durasi berstatus <strong>HOLD</strong> dikecualikan dari keterlambatan).
+                                    <em>Rata-rata &amp; Median waktu</em> = durasi pengerjaan aktif dengan presisi sub-hari (min. 0,1 hari, tidak termasuk durasi <strong>HOLD</strong>); tersedia dalam mode <strong>Hari Kalender</strong> dan <strong>Hari Kerja (Senin–Jumat)</strong>.
+                                    <em>Efisiensi SLA</em> = rasio durasi aktual terhadap target SLA tugas (&le; 100% berarti lebih cepat/tepat sesuai target).
+                                    <em>Skor Peringkat Berimbang</em> = <code>(Tepat Waktu × 10) + (Terlambat × 4) + (On-Time % × 0,4) + (First-Pass % × 0,2)</code>.
+                                    Pada tugas jenis <strong>Kolaborasi Multi-Petugas</strong>, setiap petugas yang terdelegasi dan memberikan minimal <strong>1 komentar atau lampiran</strong> pada ruang diskusi dihitung mengerjakan 1 tugas penuh. Penilaian mengikuti filter periode &amp; klasifikasi yang dipilih.
                                 </div>
                             </div>
-                        @endforeach
-                    </div>
-                    <hr class="my-2">
-                    <div class="d-flex align-items-start text-muted">
-                        <i class="fas fa-sticky-note text-gray-500 mr-2 mt-1 flex-shrink-0"></i>
-                        <div style="line-height: 1.6;">
-                            <strong>Catatan:</strong> <em>Ketepatan waktu</em> = persentase tugas selesai yang tindak lanjutnya diserahkan sebelum/tepat pada batas waktu (durasi berstatus <strong>HOLD</strong> dikecualikan dari keterlambatan).
-                            <em>Rata-rata waktu</em> = rata-rata hari pengerjaan aktif dari tanggal mulai hingga tindak lanjut diserahkan (tidak termasuk durasi <strong>HOLD</strong>). Pada tugas jenis <strong>Kolaborasi Multi-Petugas</strong>, setiap petugas yang terdelegasi dan memberikan minimal <strong>1 komentar atau lampiran</strong> pada ruang diskusi dihitung mengerjakan 1 tugas penuh dalam matriks &amp; peringkat kinerja. Penilaian mengikuti filter periode yang dipilih.
                         </div>
                     </div>
                 </div>
@@ -764,44 +852,57 @@
                     </table>
                 </div>
 
-                <!-- Keterangan Status Evaluasi Pemberi Tugas -->
-                <div class="mt-4 p-3 bg-light border rounded small">
-                    <div class="d-flex align-items-center font-weight-bold text-gray-800 mb-3">
-                        <i class="fas fa-info-circle text-info mr-2"></i>
-                        <span>Keterangan Matriks &amp; Evaluasi Kinerja Pemberi Tugas</span>
-                    </div>
-                    @php
-                        $pemberiLegend = [
-                            ['class' => 'badge-success', 'icon' => 'fa-bolt', 'label' => 'Sangat Responsif', 'desc' => 'Rata-rata waktu respon verifikasi (Respond Time) &le; 24 jam (1 hari) sejak tugas selesai dikerjakan.'],
-                            ['class' => 'badge-info', 'icon' => 'fa-thumbs-up', 'label' => 'Responsif', 'desc' => 'Rata-rata waktu respon verifikasi &le; 48 jam (2 hari).'],
-                            ['class' => 'badge-warning text-dark', 'icon' => 'fa-clock', 'label' => 'Cukup Responsif', 'desc' => 'Rata-rata waktu respon verifikasi &le; 72 jam (3 hari).'],
-                            ['class' => 'badge-danger', 'icon' => 'fa-exclamation-triangle', 'label' => 'Perlu Percepatan Verifikasi', 'desc' => 'Rata-rata waktu respon verifikasi &gt; 72 jam (&gt; 3 hari).'],
-                            ['class' => 'badge-light border text-muted', 'icon' => 'fa-minus-circle', 'label' => 'Belum Ada Verifikasi', 'desc' => 'Pemberi tugas belum memiliki tugas yang ditindaklanjuti &amp; diverifikasi pada periode terpilih.'],
-                        ];
-                    @endphp
-                    <div class="row">
-                        @foreach($pemberiLegend as $pLegend)
-                            <div class="col-lg-6 mb-2">
-                                <div class="d-flex align-items-start">
-                                    <div class="flex-shrink-0" style="width: 195px;">
-                                        <span class="badge {{ $pLegend['class'] }} d-inline-flex align-items-center px-2 py-1" style="font-size: 0.75rem;">
-                                            <i class="fas {{ $pLegend['icon'] }} mr-1"></i>
-                                            <span>{!! $pLegend['label'] !!}</span>
-                                        </span>
+                <!-- Keterangan Status Evaluasi Pemberi Tugas (Collapsible) -->
+                <div class="mt-4">
+                    <button class="btn btn-sm btn-light border w-100 d-flex align-items-center justify-content-between text-left font-weight-bold text-gray-800 legend-collapse-toggle"
+                            type="button"
+                            data-toggle="collapse"
+                            data-target="#collapseKeteranganPemberi"
+                            aria-expanded="false"
+                            aria-controls="collapseKeteranganPemberi">
+                        <span>
+                            <i class="fas fa-info-circle text-info mr-2"></i>Keterangan Matriks &amp; Evaluasi Kinerja Pemberi Tugas
+                        </span>
+                        <span class="small text-info font-weight-bold">
+                            Tampilkan / Sembunyikan <i class="fas fa-chevron-down ml-1 legend-chevron"></i>
+                        </span>
+                    </button>
+                    <div class="collapse mt-2" id="collapseKeteranganPemberi">
+                        <div class="p-3 bg-light border rounded small">
+                            @php
+                                $pemberiLegend = [
+                                    ['class' => 'badge-success', 'icon' => 'fa-bolt', 'label' => 'Sangat Responsif', 'desc' => 'Rata-rata waktu respon verifikasi (Respond Time) &le; 24 jam (1 hari) sejak tugas selesai dikerjakan.'],
+                                    ['class' => 'badge-info', 'icon' => 'fa-thumbs-up', 'label' => 'Responsif', 'desc' => 'Rata-rata waktu respon verifikasi &le; 48 jam (2 hari).'],
+                                    ['class' => 'badge-warning text-dark', 'icon' => 'fa-clock', 'label' => 'Cukup Responsif', 'desc' => 'Rata-rata waktu respon verifikasi &le; 72 jam (3 hari).'],
+                                    ['class' => 'badge-danger', 'icon' => 'fa-exclamation-triangle', 'label' => 'Perlu Percepatan Verifikasi', 'desc' => 'Rata-rata waktu respon verifikasi &gt; 72 jam (&gt; 3 hari).'],
+                                    ['class' => 'badge-light border text-muted', 'icon' => 'fa-minus-circle', 'label' => 'Belum Ada Verifikasi', 'desc' => 'Pemberi tugas belum memiliki tugas yang ditindaklanjuti &amp; diverifikasi pada periode terpilih.'],
+                                ];
+                            @endphp
+                            <div class="row">
+                                @foreach($pemberiLegend as $pLegend)
+                                    <div class="col-lg-6 mb-2">
+                                        <div class="d-flex align-items-start">
+                                            <div class="flex-shrink-0" style="width: 195px;">
+                                                <span class="badge {{ $pLegend['class'] }} d-inline-flex align-items-center px-2 py-1" style="font-size: 0.75rem;">
+                                                    <i class="fas {{ $pLegend['icon'] }} mr-1"></i>
+                                                    <span>{!! $pLegend['label'] !!}</span>
+                                                </span>
+                                            </div>
+                                            <div class="text-muted pl-2" style="line-height: 1.6;">
+                                                {!! $pLegend['desc'] !!}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div class="text-muted pl-2" style="line-height: 1.6;">
-                                        {!! $pLegend['desc'] !!}
-                                    </div>
+                                @endforeach
+                            </div>
+                            <hr class="my-2">
+                            <div class="d-flex align-items-start text-muted">
+                                <i class="fas fa-sticky-note text-gray-500 mr-2 mt-1 flex-shrink-0"></i>
+                                <div style="line-height: 1.6;">
+                                    <strong>Catatan Metodologi:</strong> <em>Respond Time</em> dihitung dari selisih waktu sejak pelaksana mengirim laporan bukti tindak lanjut hingga pemberi tugas memberikan keputusan verifikasi.
+                                    <em>Langsung Closed</em> = tugas yang langsung disetujui selesai tanpa pengembalian revisi. <em>Perlu Revisi</em> = tugas yang dikembalikan untuk perbaikan atau dibuka kembali (<em>reopen</em>).
                                 </div>
                             </div>
-                        @endforeach
-                    </div>
-                    <hr class="my-2">
-                    <div class="d-flex align-items-start text-muted">
-                        <i class="fas fa-sticky-note text-gray-500 mr-2 mt-1 flex-shrink-0"></i>
-                        <div style="line-height: 1.6;">
-                            <strong>Catatan Metodologi:</strong> <em>Respond Time</em> dihitung dari selisih waktu sejak pelaksana mengirim laporan bukti tindak lanjut hingga pemberi tugas memberikan keputusan verifikasi.
-                            <em>Langsung Closed</em> = tugas yang langsung disetujui selesai tanpa pengembalian revisi. <em>Perlu Revisi</em> = tugas yang dikembalikan untuk perbaikan atau dibuka kembali (<em>reopen</em>).
                         </div>
                     </div>
                 </div>
@@ -1135,6 +1236,55 @@
             </div>
         </div>
     </div>
+
+    @if($isAdmin)
+        <!-- Modal Drill-Down Audit Grafik Kinerja & Tren -->
+        <div class="modal fade" id="modalAuditGrafik" tabindex="-1" role="dialog" aria-labelledby="modalAuditGrafikTitle" aria-hidden="true">
+            <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable" role="document">
+                <div class="modal-content border-0 shadow">
+                    <div class="modal-header bg-primary text-white">
+                        <div>
+                            <h5 class="modal-title font-weight-bold mb-0" id="modalAuditGrafikTitle">
+                                <i class="fas fa-search-plus mr-2"></i>Audit Rincian Tugas
+                            </h5>
+                            <small id="modalAuditGrafikSubtitle" class="text-white-50"></small>
+                        </div>
+                        <button type="button" class="close text-white" data-dismiss="modal" aria-label="Tutup">
+                            <span aria-hidden="true">&times;</span>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div id="modalAuditSummaryPills" class="d-flex flex-wrap mb-3" style="gap: 8px;"></div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover table-sm mb-0" id="tableAuditGrafik" width="100%" cellspacing="0">
+                                <thead class="bg-light text-center">
+                                    <tr>
+                                        <th width="4%">No</th>
+                                        <th>Judul Tugas</th>
+                                        <th>Pelaksana &amp; Pendelegasi</th>
+                                        <th width="13%">Mulai / Deadline</th>
+                                        <th width="13%">Realisasi Selesai</th>
+                                        <th width="8%">HOLD</th>
+                                        <th width="13%">Durasi Aktif</th>
+                                        <th width="9%">SLA (%)</th>
+                                        <th width="11%">Ketepatan</th>
+                                        <th width="7%">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tableAuditGrafikBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="modal-footer bg-light d-flex justify-content-between">
+                        <small class="text-muted">
+                            <i class="fas fa-shield-alt text-primary mr-1"></i>Data ditarik langsung dari log aktivitas dan catatan waktu tugas SIMONTER.
+                        </small>
+                        <button type="button" class="btn btn-sm btn-secondary" data-dismiss="modal">Tutup</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
 @endsection
 
 @push('scripts')
@@ -1148,67 +1298,333 @@
             Chart.defaults.global.defaultFontColor = '#858796';
 
             @if($isAdmin)
-                // 1. ADMIN BAR CHART: Kinerja Petugas (Tugas Selesai & Rata-rata Durasi)
+                const escapeHtml = function (str) {
+                    if (str === null || str === undefined) {
+                        return '';
+                    }
+                    return String(str)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;')
+                        .replace(/'/g, '&#039;');
+                };
+
+                const fmtDays = function (val) {
+                    return (val !== null && val !== undefined) ? val + ' Hari' : 'Tidak ada data';
+                };
+
+                const openAuditDrilldownModal = function (title, subtitle, summaryPills, tasks) {
+                    const modalEl = document.getElementById('modalAuditGrafik');
+                    const titleEl = document.getElementById('modalAuditGrafikTitle');
+                    const subtitleEl = document.getElementById('modalAuditGrafikSubtitle');
+                    const pillsEl = document.getElementById('modalAuditSummaryPills');
+                    const tbodyEl = document.getElementById('tableAuditGrafikBody');
+                    if (!modalEl || !tbodyEl) {
+                        return;
+                    }
+
+                    titleEl.innerHTML = '<i class="fas fa-search-plus mr-2"></i>' + escapeHtml(title);
+                    subtitleEl.textContent = subtitle || '';
+                    pillsEl.innerHTML = summaryPills.map(function (pill) {
+                        return '<span class="badge ' + escapeHtml(pill.badgeClass) + ' px-2 py-1" style="font-size: 0.78rem;">' + escapeHtml(pill.text) + '</span>';
+                    }).join('');
+
+                    if (!tasks || tasks.length === 0) {
+                        tbodyEl.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted">Belum ada tugas selesai pada segmen ini.</td></tr>';
+                    } else {
+                        tbodyEl.innerHTML = tasks.map(function (task, idx) {
+                            const klasBadge = task.klasifikasi === 'Kepaniteraan'
+                                ? '<span class="badge badge-success px-2 py-0" style="font-size: 0.65rem;">Kepaniteraan</span>'
+                                : '<span class="badge badge-primary px-2 py-0" style="font-size: 0.65rem;">Kesekretariatan</span>';
+                            const kolabBadge = task.is_kolaborasi
+                                ? ' <span class="badge badge-info px-2 py-0" style="font-size: 0.65rem;">Kolaborasi</span>'
+                                : '';
+                            const revisiBadge = task.revisi_count > 0
+                                ? ' <span class="badge badge-warning text-dark px-2 py-0" style="font-size: 0.65rem;">' + task.revisi_count + 'x Revisi</span>'
+                                : '';
+                            const onTimeBadge = task.tepat_waktu
+                                ? '<span class="badge badge-success px-2 py-1">Tepat Waktu</span>'
+                                : '<span class="badge badge-warning text-dark px-2 py-1">Terlambat</span>';
+                            const slaBadgeClass = task.sla_pct_kalender <= 100 ? 'text-success' : 'text-danger';
+
+                            return '<tr>'
+                                + '<td class="text-center align-middle">' + (idx + 1) + '</td>'
+                                + '<td class="align-middle"><div class="font-weight-bold text-gray-900">' + escapeHtml(task.judul) + '</div><div class="mt-1">' + klasBadge + kolabBadge + revisiBadge + '</div></td>'
+                                + '<td class="align-middle small"><div><strong>PIC:</strong> ' + escapeHtml(task.petugas_name) + '</div><div class="text-muted">Oleh: ' + escapeHtml(task.admin_name) + '</div></td>'
+                                + '<td class="text-center align-middle small"><div>' + escapeHtml(task.tanggal_mulai) + '</div><div class="text-muted">s/d ' + escapeHtml(task.tanggal_deadline) + '</div></td>'
+                                + '<td class="text-center align-middle small font-weight-bold">' + escapeHtml(task.tanggal_selesai_aktual) + ' WIB</td>'
+                                + '<td class="text-center align-middle small">' + (task.hold_days > 0 ? '<span class="badge badge-secondary">' + task.hold_days + ' hr</span>' : '<span class="text-muted">-</span>') + '</td>'
+                                + '<td class="text-center align-middle small"><div><strong>' + task.durasi_kalender + ' hr</strong> (Kal)</div><div class="text-muted">' + task.durasi_kerja + ' hr (Sen-Jum)</div></td>'
+                                + '<td class="text-center align-middle small"><strong class="' + slaBadgeClass + '">' + task.sla_pct_kalender + '%</strong><div class="text-muted" style="font-size:0.68rem;">Target: ' + task.target_kalender + ' hr</div></td>'
+                                + '<td class="text-center align-middle">' + onTimeBadge + '</td>'
+                                + '<td class="text-center align-middle"><a href="' + escapeHtml(task.url) + '" class="btn btn-xs btn-info py-1 px-2" title="Buka Tugas"><i class="fas fa-eye"></i></a></td>'
+                                + '</tr>';
+                        }).join('');
+                    }
+
+                    if (window.jQuery && jQuery.fn.modal) {
+                        jQuery(modalEl).modal('show');
+                    }
+                };
+
+                // 1. ADMIN COMBO CHART: Komparasi Kinerja Petugas (Dual Y-Axis Stacked Bar + Mean/Median Lines)
                 const ctxPetugas = document.getElementById('chartPetugasPerformance');
+                const petugasChartDatasets = @json($petugasChartDatasets ?? []);
+                let currentPetugasScope = 'top_aktif';
+                let currentPetugasDayMode = 'kalender';
+                let chartPetugasInstance = null;
+
+                const getPetugasActivePayload = function () {
+                    const fallbackPayload = {
+                        labels: @json($chartPetugasLabels),
+                        selesai: @json($chartPetugasSelesai),
+                        tepat_waktu: @json($chartPetugasSelesai),
+                        terlambat: [],
+                        on_time_rate: [],
+                        first_pass_rate: [],
+                        revisi_total: [],
+                        mandiri_selesai: [],
+                        kolaborasi_selesai: [],
+                        score: [],
+                        durasi_kalender: @json($chartPetugasAvgDurasi),
+                        durasi_kerja: @json($chartPetugasAvgDurasi),
+                        median_kalender: [],
+                        median_kerja: [],
+                        target_kalender: [],
+                        target_kerja: [],
+                        sla_kalender: [],
+                        sla_kerja: [],
+                        tasks: []
+                    };
+                    return (petugasChartDatasets && petugasChartDatasets[currentPetugasScope])
+                        ? petugasChartDatasets[currentPetugasScope]
+                        : fallbackPayload;
+                };
+
                 if (ctxPetugas) {
-                    new Chart(ctxPetugas, {
+                    const initPetugasData = getPetugasActivePayload();
+
+                    chartPetugasInstance = new Chart(ctxPetugas, {
                         type: 'bar',
                         data: {
-                            labels: @json($chartPetugasLabels),
+                            labels: initPetugasData.labels,
                             datasets: [
                                 {
-                                    label: 'Tugas Selesai (Unit)',
-                                    backgroundColor: '#4e73df',
-                                    hoverBackgroundColor: '#2e59d9',
+                                    type: 'line',
+                                    label: 'Rata-rata Durasi (Hari)',
+                                    yAxisID: 'y-days',
+                                    order: 1,
+                                    fill: false,
+                                    lineTension: 0.25,
                                     borderColor: '#4e73df',
-                                    data: @json($chartPetugasSelesai),
-                                    maxBarThickness: 35,
+                                    backgroundColor: '#4e73df',
+                                    pointBackgroundColor: '#4e73df',
+                                    pointRadius: 4,
+                                    pointHoverRadius: 6,
+                                    borderWidth: 2.5,
+                                    spanGaps: false,
+                                    data: initPetugasData.durasi_kalender,
                                 },
                                 {
-                                    label: 'Rata-rata Waktu (Hari)',
+                                    type: 'line',
+                                    label: 'Median Durasi (Hari)',
+                                    yAxisID: 'y-days',
+                                    order: 1,
+                                    fill: false,
+                                    lineTension: 0.25,
+                                    borderColor: '#0ea5e9',
+                                    backgroundColor: '#0ea5e9',
+                                    pointBackgroundColor: '#0ea5e9',
+                                    pointRadius: 3,
+                                    pointHoverRadius: 5,
+                                    borderWidth: 2,
+                                    borderDash: [5, 5],
+                                    spanGaps: false,
+                                    data: initPetugasData.median_kalender,
+                                },
+                                {
+                                    type: 'bar',
+                                    label: 'Selesai Tepat Waktu (Unit)',
+                                    yAxisID: 'y-count',
+                                    order: 2,
                                     backgroundColor: '#1cc88a',
                                     hoverBackgroundColor: '#17a673',
                                     borderColor: '#1cc88a',
-                                    data: @json($chartPetugasAvgDurasi),
-                                    maxBarThickness: 35,
+                                    data: initPetugasData.tepat_waktu,
+                                    maxBarThickness: 36,
+                                },
+                                {
+                                    type: 'bar',
+                                    label: 'Selesai Terlambat (Unit)',
+                                    yAxisID: 'y-count',
+                                    order: 2,
+                                    backgroundColor: '#f6c23e',
+                                    hoverBackgroundColor: '#dda20a',
+                                    borderColor: '#f6c23e',
+                                    data: initPetugasData.terlambat,
+                                    maxBarThickness: 36,
                                 }
                             ]
                         },
                         options: {
                             maintainAspectRatio: false,
-                            layout: { padding: { left: 10, right: 15, top: 15, bottom: 0 } },
+                            layout: { padding: { left: 10, right: 10, top: 15, bottom: 0 } },
                             scales: {
                                 xAxes: [{
+                                    stacked: true,
                                     gridLines: { display: false, drawBorder: false },
-                                    ticks: { maxTicksLimit: 7 }
+                                    ticks: { maxTicksLimit: 20 }
                                 }],
-                                yAxes: [{
-                                    ticks: {
-                                        min: 0,
-                                        maxTicksLimit: 6,
-                                        padding: 10,
-                                        callback: function(value) { return Number.isInteger(value) ? value : value.toFixed(1); }
+                                yAxes: [
+                                    {
+                                        id: 'y-count',
+                                        position: 'left',
+                                        stacked: true,
+                                        ticks: {
+                                            beginAtZero: true,
+                                            precision: 0,
+                                            maxTicksLimit: 6,
+                                            padding: 8
+                                        },
+                                        scaleLabel: {
+                                            display: true,
+                                            labelString: 'Jumlah Tugas (Unit)'
+                                        },
+                                        gridLines: { color: "rgb(234, 236, 244)", zeroLineColor: "rgb(234, 236, 244)", drawBorder: false, borderDash: [2], zeroLineBorderDash: [2] }
                                     },
-                                    gridLines: { color: "rgb(234, 236, 244)", zeroLineColor: "rgb(234, 236, 244)", drawBorder: false, borderDash: [2], zeroLineBorderDash: [2] }
-                                }]
+                                    {
+                                        id: 'y-days',
+                                        position: 'right',
+                                        stacked: false,
+                                        ticks: {
+                                            beginAtZero: true,
+                                            maxTicksLimit: 6,
+                                            padding: 8,
+                                            callback: function(value) { return Number.isInteger(value) ? value : value.toFixed(1); }
+                                        },
+                                        scaleLabel: {
+                                            display: true,
+                                            labelString: 'Durasi (Hari)'
+                                        },
+                                        gridLines: { drawOnChartArea: false, drawBorder: false }
+                                    }
+                                ]
                             },
                             legend: { display: false },
                             tooltips: {
                                 backgroundColor: "rgb(255,255,255)",
-                                bodyFontColor: "#858796",
-                                titleMarginBottom: 10,
-                                titleFontColor: '#6e707e',
-                                titleFontSize: 14,
+                                bodyFontColor: "#5a5c69",
+                                titleMarginBottom: 8,
+                                titleFontColor: '#2e3a4d',
+                                titleFontSize: 13,
                                 borderColor: '#dddfeb',
                                 borderWidth: 1,
-                                xPadding: 15,
-                                yPadding: 15,
-                                displayColors: false,
+                                xPadding: 14,
+                                yPadding: 12,
+                                displayColors: true,
                                 intersect: false,
                                 mode: 'index',
-                                caretPadding: 10
+                                caretPadding: 10,
+                                callbacks: {
+                                    label: function (tooltipItem, data) {
+                                        const dsLabel = data.datasets[tooltipItem.datasetIndex].label || '';
+                                        const val = tooltipItem.yLabel;
+                                        if (dsLabel.indexOf('Durasi') !== -1) {
+                                            return dsLabel + ': ' + ((val !== null && val !== undefined && !isNaN(val)) ? val + ' Hari' : 'Tidak ada data');
+                                        }
+                                        return dsLabel + ': ' + (val || 0) + ' Tugas';
+                                    },
+                                    afterBody: function (tooltipItems) {
+                                        if (!tooltipItems || tooltipItems.length === 0) {
+                                            return [];
+                                        }
+                                        const idx = tooltipItems[0].index;
+                                        const p = getPetugasActivePayload();
+                                        const total = p.selesai[idx] || 0;
+                                        const onTimeRate = p.on_time_rate[idx] ?? 0;
+                                        const firstPass = p.first_pass_rate[idx] ?? 0;
+                                        const mandiri = p.mandiri_selesai[idx] ?? 0;
+                                        const kolab = p.kolaborasi_selesai[idx] ?? 0;
+                                        const score = p.score[idx] ?? 0;
+                                        const isKerja = currentPetugasDayMode === 'kerja';
+                                        const targetVal = isKerja ? p.target_kerja[idx] : p.target_kalender[idx];
+                                        const slaVal = isKerja ? p.sla_kerja[idx] : p.sla_kalender[idx];
+
+                                        const lines = [
+                                            'Total Selesai: ' + total + ' Tugas (On-Time: ' + onTimeRate + '%)',
+                                            'Komposisi: ' + mandiri + ' Mandiri, ' + kolab + ' Kolaborasi',
+                                            'First-Pass (Tanpa Revisi): ' + firstPass + '% | Skor: ' + score
+                                        ];
+                                        if (targetVal !== null && targetVal !== undefined) {
+                                            lines.push('Target SLA: ' + targetVal + ' Hari (Efisiensi: ' + slaVal + '%)');
+                                        }
+                                        lines.push('Klik untuk audit rincian tugas');
+                                        return lines;
+                                    }
+                                }
+                            },
+                            onClick: function (evt) {
+                                const points = chartPetugasInstance.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+                                if (!points || points.length === 0) {
+                                    return;
+                                }
+                                const idx = points[0]._index;
+                                const p = getPetugasActivePayload();
+                                const officerName = p.labels[idx] || 'Petugas';
+                                const isKerja = currentPetugasDayMode === 'kerja';
+                                const avgDur = isKerja ? p.durasi_kerja[idx] : p.durasi_kalender[idx];
+                                const medDur = isKerja ? p.median_kerja[idx] : p.median_kalender[idx];
+                                const slaVal = isKerja ? p.sla_kerja[idx] : p.sla_kalender[idx];
+
+                                openAuditDrilldownModal(
+                                    'Audit Kinerja Petugas: ' + officerName,
+                                    'Mode Perhitungan Aktif: ' + (isKerja ? 'Hari Kerja (Senin-Jumat)' : 'Hari Kalender'),
+                                    [
+                                        { badgeClass: 'badge-primary', text: 'Selesai: ' + (p.selesai[idx] || 0) + ' Tugas' },
+                                        { badgeClass: 'badge-success', text: 'Tepat Waktu: ' + (p.tepat_waktu[idx] || 0) + ' (' + (p.on_time_rate[idx] || 0) + '%)' },
+                                        { badgeClass: 'badge-warning text-dark', text: 'Terlambat: ' + (p.terlambat[idx] || 0) },
+                                        { badgeClass: 'badge-info', text: 'Rata-rata: ' + fmtDays(avgDur) + ' | Median: ' + fmtDays(medDur) },
+                                        { badgeClass: 'badge-secondary', text: 'Efisiensi SLA: ' + (slaVal !== null && slaVal !== undefined ? slaVal + '%' : '-') },
+                                        { badgeClass: 'badge-dark', text: 'Skor Audit: ' + (p.score[idx] ?? 0) }
+                                    ],
+                                    p.tasks[idx] || []
+                                );
                             }
                         }
+                    });
+
+                    const updatePetugasChart = function () {
+                        const p = getPetugasActivePayload();
+                        const isKerja = currentPetugasDayMode === 'kerja';
+                        chartPetugasInstance.data.labels = p.labels;
+                        chartPetugasInstance.data.datasets[0].label = isKerja ? 'Rata-rata Durasi (Hari Kerja)' : 'Rata-rata Durasi (Hari Kalender)';
+                        chartPetugasInstance.data.datasets[0].data = isKerja ? p.durasi_kerja : p.durasi_kalender;
+                        chartPetugasInstance.data.datasets[1].label = isKerja ? 'Median Durasi (Hari Kerja)' : 'Median Durasi (Hari Kalender)';
+                        chartPetugasInstance.data.datasets[1].data = isKerja ? p.median_kerja : p.median_kalender;
+                        chartPetugasInstance.data.datasets[2].data = p.tepat_waktu;
+                        chartPetugasInstance.data.datasets[3].data = p.terlambat;
+                        chartPetugasInstance.update();
+                    };
+
+                    const scopeButtons = document.querySelectorAll('#petugasScopeBtnGroup button[data-scope]');
+                    scopeButtons.forEach(function (button) {
+                        button.addEventListener('click', function () {
+                            currentPetugasScope = this.getAttribute('data-scope') || 'top_aktif';
+                            scopeButtons.forEach(function (b) { b.classList.remove('active'); });
+                            this.classList.add('active');
+                            updatePetugasChart();
+                        });
+                    });
+
+                    const petugasDayButtons = document.querySelectorAll('#petugasDayModeBtnGroup button[data-day-mode]');
+                    petugasDayButtons.forEach(function (button) {
+                        button.addEventListener('click', function () {
+                            currentPetugasDayMode = this.getAttribute('data-day-mode') || 'kalender';
+                            petugasDayButtons.forEach(function (b) { b.classList.remove('active'); });
+                            this.classList.add('active');
+                            updatePetugasChart();
+                        });
                     });
                 }
 
@@ -1244,122 +1660,279 @@
                     });
                 }
 
-                // 3. ADMIN LINE/AREA CHART: Tren Penyelesaian Tugas & Rata-rata Waktu (1 Tahun, 6 Bulan, 3 Bulan, 1 Bulan)
+                // 3. ADMIN COMBO CHART: Tren Penyelesaian Tugas & Rata-rata Waktu (Dual Y-Axis)
                 const ctxTrend = document.getElementById('chartMonthlyTrend');
                 const trendDatasets = @json($trendDatasets ?? []);
+                let currentTrendPeriod = '6_bulan';
+                let currentTrendDayMode = 'kalender';
                 let chartMonthlyTrendInstance = null;
 
-                if (ctxTrend) {
-                    const initialPeriod = '6_bulan';
-                    const initialData = (trendDatasets && trendDatasets[initialPeriod]) ? trendDatasets[initialPeriod] : {
+                const getTrendActivePayload = function () {
+                    return (trendDatasets && trendDatasets[currentTrendPeriod]) ? trendDatasets[currentTrendPeriod] : {
                         labels: @json($trendLabels ?? []),
                         selesai: @json($trendSelesaiData ?? []),
+                        tepat_waktu: @json($trendSelesaiData ?? []),
+                        terlambat: [],
+                        on_time_rate: [],
                         durasi: @json($trendAvgDurasiData ?? []),
-                        subtitle: '6 Bulan Terakhir'
+                        durasi_kerja: @json($trendAvgDurasiData ?? []),
+                        median_durasi: [],
+                        median_durasi_kerja: [],
+                        target_durasi: [],
+                        target_durasi_kerja: [],
+                        sla_efisiensi: [],
+                        sla_efisiensi_kerja: [],
+                        tasks: [],
+                        subtitle: '6 Bulan Terakhir (Berdasarkan Realisasi Selesai)'
                     };
+                };
+
+                if (ctxTrend) {
+                    const initialData = getTrendActivePayload();
 
                     chartMonthlyTrendInstance = new Chart(ctxTrend, {
-                        type: 'line',
+                        type: 'bar',
                         data: {
                             labels: initialData.labels,
                             datasets: [
                                 {
-                                    label: 'Tugas Selesai',
-                                    lineTension: 0.3,
-                                    backgroundColor: "rgba(78, 115, 223, 0.05)",
-                                    borderColor: "rgba(78, 115, 223, 1)",
+                                    type: 'line',
+                                    label: 'Rata-rata Durasi (Hari)',
+                                    yAxisID: 'y-days',
+                                    order: 1,
+                                    lineTension: 0.25,
+                                    fill: false,
+                                    backgroundColor: '#4e73df',
+                                    borderColor: '#4e73df',
                                     pointRadius: 4,
-                                    pointBackgroundColor: "rgba(78, 115, 223, 1)",
-                                    pointBorderColor: "rgba(78, 115, 223, 1)",
-                                    pointHoverRadius: 5,
-                                    pointHoverBackgroundColor: "rgba(78, 115, 223, 1)",
-                                    pointHoverBorderColor: "rgba(78, 115, 223, 1)",
+                                    pointBackgroundColor: '#4e73df',
+                                    pointBorderColor: '#4e73df',
+                                    pointHoverRadius: 6,
                                     pointHitRadius: 10,
-                                    pointBorderWidth: 2,
-                                    data: initialData.selesai,
+                                    borderWidth: 2.5,
+                                    spanGaps: false,
+                                    data: initialData.durasi,
                                 },
                                 {
-                                    label: 'Rata-rata Waktu (Hari)',
-                                    lineTension: 0.3,
-                                    backgroundColor: "rgba(28, 200, 138, 0.05)",
-                                    borderColor: "rgba(28, 200, 138, 1)",
-                                    pointRadius: 4,
-                                    pointBackgroundColor: "rgba(28, 200, 138, 1)",
-                                    pointBorderColor: "rgba(28, 200, 138, 1)",
+                                    type: 'line',
+                                    label: 'Median Durasi (Hari)',
+                                    yAxisID: 'y-days',
+                                    order: 1,
+                                    lineTension: 0.25,
+                                    fill: false,
+                                    backgroundColor: '#0ea5e9',
+                                    borderColor: '#0ea5e9',
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#0ea5e9',
                                     pointHoverRadius: 5,
-                                    pointHoverBackgroundColor: "rgba(28, 200, 138, 1)",
-                                    pointHoverBorderColor: "rgba(28, 200, 138, 1)",
-                                    pointHitRadius: 10,
-                                    pointBorderWidth: 2,
-                                    data: initialData.durasi,
+                                    borderWidth: 2,
+                                    borderDash: [5, 5],
+                                    spanGaps: false,
+                                    data: initialData.median_durasi,
+                                },
+                                {
+                                    type: 'line',
+                                    label: 'Rata-rata Target SLA (Hari)',
+                                    yAxisID: 'y-days',
+                                    order: 1,
+                                    lineTension: 0.25,
+                                    fill: false,
+                                    backgroundColor: '#94a3b8',
+                                    borderColor: '#94a3b8',
+                                    pointRadius: 3,
+                                    pointBackgroundColor: '#94a3b8',
+                                    pointHoverRadius: 5,
+                                    borderWidth: 2,
+                                    borderDash: [2, 3],
+                                    spanGaps: false,
+                                    data: initialData.target_durasi,
+                                },
+                                {
+                                    type: 'bar',
+                                    label: 'Selesai Tepat Waktu (Unit)',
+                                    yAxisID: 'y-count',
+                                    order: 2,
+                                    backgroundColor: '#1cc88a',
+                                    hoverBackgroundColor: '#17a673',
+                                    borderColor: '#1cc88a',
+                                    data: initialData.tepat_waktu,
+                                    maxBarThickness: 32,
+                                },
+                                {
+                                    type: 'bar',
+                                    label: 'Selesai Terlambat (Unit)',
+                                    yAxisID: 'y-count',
+                                    order: 2,
+                                    backgroundColor: '#f6c23e',
+                                    hoverBackgroundColor: '#dda20a',
+                                    borderColor: '#f6c23e',
+                                    data: initialData.terlambat,
+                                    maxBarThickness: 32,
                                 }
                             ],
                         },
                         options: {
                             maintainAspectRatio: false,
-                            layout: { padding: { left: 10, right: 25, top: 15, bottom: 0 } },
+                            layout: { padding: { left: 10, right: 10, top: 15, bottom: 0 } },
                             scales: {
                                 xAxes: [{
+                                    stacked: true,
                                     gridLines: { display: false, drawBorder: false },
                                     ticks: { maxTicksLimit: 12 }
                                 }],
-                                yAxes: [{
-                                    ticks: {
-                                        min: 0,
-                                        maxTicksLimit: 6,
-                                        padding: 10,
-                                        callback: function(value) { return Number.isInteger(value) ? value : value.toFixed(1); }
+                                yAxes: [
+                                    {
+                                        id: 'y-count',
+                                        position: 'left',
+                                        stacked: true,
+                                        ticks: {
+                                            beginAtZero: true,
+                                            precision: 0,
+                                            maxTicksLimit: 6,
+                                            padding: 8
+                                        },
+                                        scaleLabel: {
+                                            display: true,
+                                            labelString: 'Jumlah Tugas (Unit)'
+                                        },
+                                        gridLines: { color: "rgb(234, 236, 244)", zeroLineColor: "rgb(234, 236, 244)", drawBorder: false, borderDash: [2], zeroLineBorderDash: [2] }
                                     },
-                                    gridLines: { color: "rgb(234, 236, 244)", zeroLineColor: "rgb(234, 236, 244)", drawBorder: false, borderDash: [2], zeroLineBorderDash: [2] }
-                                }],
+                                    {
+                                        id: 'y-days',
+                                        position: 'right',
+                                        stacked: false,
+                                        ticks: {
+                                            beginAtZero: true,
+                                            maxTicksLimit: 6,
+                                            padding: 8,
+                                            callback: function(value) { return Number.isInteger(value) ? value : value.toFixed(1); }
+                                        },
+                                        scaleLabel: {
+                                            display: true,
+                                            labelString: 'Durasi (Hari)'
+                                        },
+                                        gridLines: { drawOnChartArea: false, drawBorder: false }
+                                    }
+                                ],
                             },
-                            legend: { display: true, position: 'top' },
+                            legend: { display: false },
                             tooltips: {
                                 backgroundColor: "rgb(255,255,255)",
-                                bodyFontColor: "#858796",
-                                titleMarginBottom: 10,
-                                titleFontColor: '#6e707e',
-                                titleFontSize: 14,
+                                bodyFontColor: "#5a5c69",
+                                titleMarginBottom: 8,
+                                titleFontColor: '#2e3a4d',
+                                titleFontSize: 13,
                                 borderColor: '#dddfeb',
                                 borderWidth: 1,
-                                xPadding: 15,
-                                yPadding: 15,
-                                displayColors: false,
+                                xPadding: 14,
+                                yPadding: 12,
+                                displayColors: true,
                                 intersect: false,
                                 mode: 'index',
                                 caretPadding: 10,
+                                callbacks: {
+                                    label: function (tooltipItem, data) {
+                                        const dsLabel = data.datasets[tooltipItem.datasetIndex].label || '';
+                                        const val = tooltipItem.yLabel;
+                                        if (dsLabel.indexOf('Durasi') !== -1 || dsLabel.indexOf('Target') !== -1) {
+                                            return dsLabel + ': ' + ((val !== null && val !== undefined && !isNaN(val)) ? val + ' Hari' : 'Tidak ada data');
+                                        }
+                                        return dsLabel + ': ' + (val || 0) + ' Tugas';
+                                    },
+                                    afterBody: function (tooltipItems) {
+                                        if (!tooltipItems || tooltipItems.length === 0) {
+                                            return [];
+                                        }
+                                        const idx = tooltipItems[0].index;
+                                        const t = getTrendActivePayload();
+                                        const total = t.selesai[idx] || 0;
+                                        const onTime = t.on_time_rate[idx];
+                                        const isKerja = currentTrendDayMode === 'kerja';
+                                        const slaVal = isKerja ? t.sla_efisiensi_kerja[idx] : t.sla_efisiensi[idx];
+                                        if (total === 0) {
+                                            return ['Belum ada tugas selesai pada periode ini'];
+                                        }
+                                        const lines = [
+                                            'Total Selesai (N): ' + total + ' Tugas (On-Time: ' + (onTime ?? 0) + '%)',
+                                            'Efisiensi SLA Aktual/Target: ' + (slaVal !== null && slaVal !== undefined ? slaVal + '%' : '-'),
+                                            'Klik untuk audit rincian tugas periode ini'
+                                        ];
+                                        return lines;
+                                    }
+                                }
+                            },
+                            onClick: function (evt) {
+                                const points = chartMonthlyTrendInstance.getElementsAtEventForMode(evt, 'index', { intersect: false }, true);
+                                if (!points || points.length === 0) {
+                                    return;
+                                }
+                                const idx = points[0]._index;
+                                const t = getTrendActivePayload();
+                                const bucketLabel = t.labels[idx] || 'Periode';
+                                const isKerja = currentTrendDayMode === 'kerja';
+                                const avgDur = isKerja ? t.durasi_kerja[idx] : t.durasi[idx];
+                                const medDur = isKerja ? t.median_durasi_kerja[idx] : t.median_durasi[idx];
+                                const slaVal = isKerja ? t.sla_efisiensi_kerja[idx] : t.sla_efisiensi[idx];
+
+                                openAuditDrilldownModal(
+                                    'Audit Penyelesaian Periode: ' + bucketLabel,
+                                    'Dikelompokkan berdasarkan tanggal realisasi selesai (' + (isKerja ? 'Hari Kerja Senin-Jumat' : 'Hari Kalender') + ')',
+                                    [
+                                        { badgeClass: 'badge-primary', text: 'Selesai (N): ' + (t.selesai[idx] || 0) + ' Tugas' },
+                                        { badgeClass: 'badge-success', text: 'Tepat Waktu: ' + (t.tepat_waktu[idx] || 0) + ((t.on_time_rate[idx] !== null && t.on_time_rate[idx] !== undefined) ? ' (' + t.on_time_rate[idx] + '%)' : '') },
+                                        { badgeClass: 'badge-warning text-dark', text: 'Terlambat: ' + (t.terlambat[idx] || 0) },
+                                        { badgeClass: 'badge-info', text: 'Rata-rata: ' + fmtDays(avgDur) + ' | Median: ' + fmtDays(medDur) },
+                                        { badgeClass: 'badge-secondary', text: 'Efisiensi SLA: ' + (slaVal !== null && slaVal !== undefined ? slaVal + '%' : '-') }
+                                    ],
+                                    t.tasks[idx] || []
+                                );
                             }
                         }
                     });
 
+                    const periodSubtitle = document.getElementById('trendPeriodSubtitle');
+                    const updateTrendChart = function () {
+                        const targetData = getTrendActivePayload();
+                        const isKerja = currentTrendDayMode === 'kerja';
+
+                        if (periodSubtitle && targetData.subtitle) {
+                            periodSubtitle.innerHTML = '<i class="fas fa-calendar-alt text-gray-400 mr-1"></i> Periode: ' + escapeHtml(targetData.subtitle);
+                        }
+
+                        chartMonthlyTrendInstance.data.labels = targetData.labels;
+                        chartMonthlyTrendInstance.data.datasets[0].label = isKerja ? 'Rata-rata Durasi (Hari Kerja)' : 'Rata-rata Durasi (Hari)';
+                        chartMonthlyTrendInstance.data.datasets[0].data = isKerja ? targetData.durasi_kerja : targetData.durasi;
+                        chartMonthlyTrendInstance.data.datasets[1].label = isKerja ? 'Median Durasi (Hari Kerja)' : 'Median Durasi (Hari)';
+                        chartMonthlyTrendInstance.data.datasets[1].data = isKerja ? targetData.median_durasi_kerja : targetData.median_durasi;
+                        chartMonthlyTrendInstance.data.datasets[2].label = isKerja ? 'Rata-rata Target SLA (Hari Kerja)' : 'Rata-rata Target SLA (Hari)';
+                        chartMonthlyTrendInstance.data.datasets[2].data = isKerja ? targetData.target_durasi_kerja : targetData.target_durasi;
+                        chartMonthlyTrendInstance.data.datasets[3].data = targetData.tepat_waktu;
+                        chartMonthlyTrendInstance.data.datasets[4].data = targetData.terlambat;
+                        chartMonthlyTrendInstance.update();
+                    };
+
                     // Event listeners untuk tombol pilihan periode tren (1 Tahun, 6 Bulan, 3 Bulan, 1 Bulan)
                     const periodButtons = document.querySelectorAll('#trendPeriodBtnGroup button[data-period]');
-                    const periodSubtitle = document.getElementById('trendPeriodSubtitle');
-
                     periodButtons.forEach(function (button) {
                         button.addEventListener('click', function () {
                             const selectedPeriod = this.getAttribute('data-period');
                             if (!trendDatasets || !trendDatasets[selectedPeriod]) {
                                 return;
                             }
-
-                            // Update visual active state pada tombol
-                            periodButtons.forEach(function (b) {
-                                b.classList.remove('active');
-                            });
+                            currentTrendPeriod = selectedPeriod;
+                            periodButtons.forEach(function (b) { b.classList.remove('active'); });
                             this.classList.add('active');
+                            updateTrendChart();
+                        });
+                    });
 
-                            // Update teks sub-judul keterangan periode
-                            if (periodSubtitle && trendDatasets[selectedPeriod].subtitle) {
-                                periodSubtitle.innerHTML = '<i class="fas fa-calendar-alt text-gray-400 mr-1"></i> Periode: ' + trendDatasets[selectedPeriod].subtitle;
-                            }
-
-                            // Update data grafik dan re-render secara instan
-                            const targetData = trendDatasets[selectedPeriod];
-                            chartMonthlyTrendInstance.data.labels = targetData.labels;
-                            chartMonthlyTrendInstance.data.datasets[0].data = targetData.selesai;
-                            chartMonthlyTrendInstance.data.datasets[1].data = targetData.durasi;
-                            chartMonthlyTrendInstance.update();
+                    const trendDayButtons = document.querySelectorAll('#trendDayModeBtnGroup button[data-day-mode]');
+                    trendDayButtons.forEach(function (button) {
+                        button.addEventListener('click', function () {
+                            currentTrendDayMode = this.getAttribute('data-day-mode') || 'kalender';
+                            trendDayButtons.forEach(function (b) { b.classList.remove('active'); });
+                            this.classList.add('active');
+                            updateTrendChart();
                         });
                     });
                 }

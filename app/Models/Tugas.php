@@ -406,12 +406,97 @@ class Tugas extends Model
     }
 
     /**
-     * Calculate effective working duration in days from active working start until completion/closed,
-     * excluding any time spent in HOLD status.
+     * Get the effective working start timestamp (uses created_at time when started & created on the same day).
+     */
+    public function getEffectiveStartTime(): Carbon
+    {
+        if ($this->tanggal_mulai) {
+            $mulaiStart = Carbon::parse($this->tanggal_mulai)->startOfDay();
+            $created = $this->created_at ? Carbon::parse($this->created_at) : null;
+            $finishBoundary = $this->tanggal_tindak_lanjut ? Carbon::parse($this->tanggal_tindak_lanjut) : null;
+
+            if (
+                $created
+                && $created->isSameDay($mulaiStart)
+                && $created->gt($mulaiStart)
+                && ($finishBoundary === null || $created->lte($finishBoundary))
+            ) {
+                return $created->copy();
+            }
+
+            return $mulaiStart;
+        }
+
+        return Carbon::parse($this->created_at);
+    }
+
+    /**
+     * Get the actual completion timestamp (prefers the 'selesai' verification log, falls back to submission/update).
+     */
+    public function getActualCompletionTime(): Carbon
+    {
+        $logs = $this->relationLoaded('logs')
+            ? $this->logs
+            : ($this->exists ? $this->logs()->get() : collect());
+
+        $selesaiLog = $logs->filter(fn (TugasLog $log): bool => $log->action === 'selesai')->last();
+
+        if ($selesaiLog && $selesaiLog->created_at) {
+            return Carbon::parse($selesaiLog->created_at);
+        }
+
+        return Carbon::parse($this->tanggal_tindak_lanjut ?? $this->updated_at ?? $this->created_at);
+    }
+
+    /**
+     * Calculate exact elapsed duration in business days (Mon-Fri, excluding Saturday & Sunday).
+     */
+    public static function calculateWeekdayDurationDays(Carbon $start, Carbon $end): float
+    {
+        if ($end->lte($start)) {
+            return 0.0;
+        }
+
+        if ($start->isSameDay($end)) {
+            return $start->isWeekend() ? 0.0 : max(0.0, $start->floatDiffInDays($end));
+        }
+
+        $total = 0.0;
+        $nextDayStart = $start->copy()->addDay()->startOfDay();
+
+        if (! $start->isWeekend()) {
+            $total += max(0.0, $start->floatDiffInDays($nextDayStart));
+        }
+
+        $endStart = $end->copy()->startOfDay();
+        $wholeDaysBetween = (int) $nextDayStart->diffInDays($endStart, false);
+
+        if ($wholeDaysBetween > 0) {
+            $fullWeeks = intdiv($wholeDaysBetween, 7);
+            $total += $fullWeeks * 5;
+            $remainingDays = $wholeDaysBetween % 7;
+
+            for ($d = 0; $d < $remainingDays; $d++) {
+                if (! $nextDayStart->copy()->addDays(($fullWeeks * 7) + $d)->isWeekend()) {
+                    $total += 1.0;
+                }
+            }
+        }
+
+        if (! $end->isWeekend()) {
+            $total += max(0.0, $endStart->floatDiffInDays($end));
+        }
+
+        return $total;
+    }
+
+    /**
+     * Calculate effective working duration in calendar days from active start until submission,
+     * excluding any time spent in HOLD status, with sub-day (0.1 day) precision.
      */
     public function getEffectiveWorkingDurationDays(): float
     {
-        $start = Carbon::parse($this->tanggal_mulai ?? $this->created_at);
+        $start = $this->getEffectiveStartTime();
         $finish = Carbon::parse($this->tanggal_tindak_lanjut ?? $this->updated_at);
 
         $rawDays = max(0.0, $start->floatDiffInDays($finish));
@@ -420,7 +505,79 @@ class Tugas extends Model
 
         $effectiveDays = max(0.0, $rawDays - $holdDays);
 
-        return max(1.0, round($effectiveDays, 1));
+        return max(0.1, round($effectiveDays, 1));
+    }
+
+    /**
+     * Calculate effective working duration in Mon-Fri business days, excluding HOLD duration.
+     */
+    public function getEffectiveBusinessWorkingDurationDays(): float
+    {
+        $start = $this->getEffectiveStartTime();
+        $finish = Carbon::parse($this->tanggal_tindak_lanjut ?? $this->updated_at);
+
+        $rawDays = self::calculateWeekdayDurationDays($start, $finish);
+        $holdSeconds = max($this->getHoldDurationSeconds($finish), (int) ($this->total_hold_seconds ?? 0));
+        $holdDays = $holdSeconds / 86400;
+
+        $effectiveDays = max(0.0, $rawDays - $holdDays);
+
+        return max(0.1, round($effectiveDays, 1));
+    }
+
+    /**
+     * Calculate the planned SLA target duration in calendar or Mon-Fri business days.
+     */
+    public function getTargetDurationDays(bool $businessDaysOnly = false): float
+    {
+        if (! $this->tanggal_selesai) {
+            return 1.0;
+        }
+
+        $startDay = $this->getEffectiveStartTime()->copy()->startOfDay();
+        $deadlineEnd = Carbon::parse($this->tanggal_selesai)->endOfDay();
+
+        $rawDays = $businessDaysOnly
+            ? self::calculateWeekdayDurationDays($startDay, $deadlineEnd)
+            : max(0.0, $startDay->floatDiffInDays($deadlineEnd));
+
+        return max(1.0, round($rawDays, 1));
+    }
+
+    /**
+     * Calculate SLA duration efficiency ratio in percent (actual / target * 100). Lower is faster.
+     */
+    public function getSlaEfficiencyPercent(bool $businessDaysOnly = false): float
+    {
+        $actual = $businessDaysOnly
+            ? $this->getEffectiveBusinessWorkingDurationDays()
+            : $this->getEffectiveWorkingDurationDays();
+
+        $target = $this->getTargetDurationDays($businessDaysOnly);
+
+        return round(($actual / $target) * 100, 1);
+    }
+
+    /**
+     * Count how many times this task was returned for revision or reopened.
+     */
+    public function getRevisionCount(): int
+    {
+        $logs = $this->relationLoaded('logs')
+            ? $this->logs
+            : ($this->exists ? $this->logs()->get() : collect());
+
+        return $logs->filter(
+            fn (TugasLog $log): bool => in_array($log->action, ['revisi', 'buka_kembali'], true) || $log->status === 'Perlu Revisi'
+        )->count();
+    }
+
+    /**
+     * Determine whether this completed task passed verification on the first attempt without revisions.
+     */
+    public function isFirstPassCompleted(): bool
+    {
+        return $this->status === 'Selesai' && $this->getRevisionCount() === 0;
     }
 
     /**

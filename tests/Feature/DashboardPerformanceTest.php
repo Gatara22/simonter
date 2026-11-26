@@ -454,7 +454,7 @@ class DashboardPerformanceTest extends TestCase
         $this->assertSame(1, $picStat['selesai']);
         $this->assertSame(1, $picStat['tepat_waktu']);
         $this->assertEquals(100.0, $picStat['on_time_rate']);
-        $this->assertEquals(60.0, $picStat['score']);
+        $this->assertEquals(70.0, $picStat['score']);
 
         $attachStat = $petugasStats->firstWhere('id', $petugasAttachment->id);
         $this->assertNotNull($attachStat);
@@ -463,7 +463,7 @@ class DashboardPerformanceTest extends TestCase
         $this->assertSame(1, $attachStat['selesai']);
         $this->assertSame(1, $attachStat['tepat_waktu']);
         $this->assertEquals(100.0, $attachStat['on_time_rate']);
-        $this->assertEquals(60.0, $attachStat['score']);
+        $this->assertEquals(70.0, $attachStat['score']);
 
         $pasifStat = $petugasStats->firstWhere('id', $petugasPasif->id);
         $this->assertNotNull($pasifStat);
@@ -619,7 +619,8 @@ class DashboardPerformanceTest extends TestCase
         $createdOrderIds = $adminItems->whereIn('id', [$tugasHariIni->id, $tugasBesok->id, $tugasLusa->id])->pluck('id')->values()->all();
         $this->assertSame([$tugasHariIni->id, $tugasBesok->id, $tugasLusa->id], $createdOrderIds);
 
-        $adminModalHtml = strstr($adminResp->getContent(), 'id="modalTugasMendekatiDeadline"') ?: '';
+        $adminModalTail = strstr($adminResp->getContent(), 'id="modalTugasMendekatiDeadline"') ?: '';
+        $adminModalHtml = strstr($adminModalTail, 'id="modalAuditGrafik"', true) ?: $adminModalTail;
         $this->assertStringContainsString('DL_0_HARI_KESEK', $adminModalHtml);
         $this->assertStringContainsString('DL_1_HARI_KEPAN', $adminModalHtml);
         $this->assertStringContainsString('DL_2_HARI_KESEK', $adminModalHtml);
@@ -702,5 +703,197 @@ class DashboardPerformanceTest extends TestCase
         $indexPetugasResp->assertSee('DL_1_HARI_KEPAN');
         $indexPetugasResp->assertDontSee('DL_2_HARI_KESEK');
         $indexPetugasResp->assertDontSee('EXCL_PAST_MINUS_1');
+    }
+
+    /**
+     * Test trend chart groups completed tasks by actual completion timestamp and uses null for empty periods.
+     */
+    public function test_trend_chart_uses_actual_completion_date_and_null_for_empty_periods(): void
+    {
+        Carbon::setTestNow(Carbon::create(2030, 6, 15, 12, 0, 0));
+
+        try {
+            $admin = User::factory()->create(['jabatan' => 'Admin']);
+            $petugas = User::factory()->create(['jabatan' => 'Petugas']);
+
+            // Task 1: Deadline was 2 months ago (April 2030), but finished & verified today (June 2030) -> Late
+            $lateTask = Tugas::factory()->create([
+                'admin_id' => $admin->id,
+                'petugas_id' => $petugas->id,
+                'judul' => 'Tren_Deadline_April_Selesai_Juni',
+                'status' => 'Selesai',
+                'tanggal_mulai' => '2030-04-01',
+                'tanggal_selesai' => '2030-04-10',
+                'tanggal_tindak_lanjut' => '2030-06-15 10:00:00',
+            ]);
+            $log1 = $lateTask->recordLog('selesai', 'Selesai', 'Selesai di bulan Juni', null, $admin->id);
+            $log1->created_at = Carbon::create(2030, 6, 15, 11, 0, 0);
+            $log1->save();
+
+            // Task 2: Deadline is next month (July 2030), completed ahead of time today (June 2030) -> On-Time
+            $earlyTask = Tugas::factory()->create([
+                'admin_id' => $admin->id,
+                'petugas_id' => $petugas->id,
+                'judul' => 'Tren_Deadline_Juli_Selesai_Juni',
+                'status' => 'Selesai',
+                'tanggal_mulai' => '2030-06-10',
+                'tanggal_selesai' => '2030-07-10',
+                'tanggal_tindak_lanjut' => '2030-06-15 12:00:00',
+            ]);
+            $log2 = $earlyTask->recordLog('selesai', 'Selesai', 'Diselesaikan lebih cepat', null, $admin->id);
+            $log2->created_at = Carbon::create(2030, 6, 15, 12, 0, 0);
+            $log2->save();
+
+            $response = $this->actingAs($admin)->get(route('dashboard'));
+            $response->assertStatus(200);
+
+            $trendDatasets = $response->viewData('trendDatasets');
+            $sixBulan = $trendDatasets['6_bulan'];
+
+            // Index 3 = Apr 2030 (Jan, Feb, Mar, Apr, May, Jun 2030) -> must have 0 completed and NULL durations
+            $this->assertSame(0, $sixBulan['selesai'][3]);
+            $this->assertNull($sixBulan['durasi'][3]);
+            $this->assertNull($sixBulan['durasi_kerja'][3]);
+            $this->assertNull($sixBulan['median_durasi'][3]);
+            $this->assertNull($sixBulan['target_durasi'][3]);
+            $this->assertSame([], $sixBulan['tasks'][3]);
+
+            // Index 5 = Jun 2030 -> must contain both tasks (1 on-time, 1 late)
+            $this->assertSame(2, $sixBulan['selesai'][5]);
+            $this->assertSame(1, $sixBulan['tepat_waktu'][5]);
+            $this->assertSame(1, $sixBulan['terlambat'][5]);
+            $this->assertEquals(50.0, $sixBulan['on_time_rate'][5]);
+            $this->assertNotNull($sixBulan['durasi'][5]);
+            $this->assertNotNull($sixBulan['durasi_kerja'][5]);
+            $this->assertNotNull($sixBulan['median_durasi'][5]);
+            $this->assertNotNull($sixBulan['target_durasi'][5]);
+
+            $juneTaskIds = array_column($sixBulan['tasks'][5], 'id');
+            $this->assertContains($lateTask->id, $juneTaskIds);
+            $this->assertContains($earlyTask->id, $juneTaskIds);
+        } finally {
+            Carbon::setTestNow();
+        }
+    }
+
+    /**
+     * Test officer comparison audit metrics: sub-day precision, Mon-Fri business days, SLA efficiency, balanced scoring, and UI audit controls.
+     */
+    public function test_officer_comparison_audit_metrics_sla_business_days_subday_and_balanced_scoring(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 11, 26, 15, 0, 0));
+
+        try {
+            $admin = User::factory()->create(['jabatan' => 'Admin']);
+            $officerA = User::factory()->create(['name' => 'Audit Officer A Disiplin', 'jabatan' => 'Petugas']);
+            $officerB = User::factory()->create(['name' => 'Audit Officer B Terlambat', 'jabatan' => 'Petugas']);
+            $officerC = User::factory()->create(['name' => 'Audit Officer C Nol Tugas', 'jabatan' => 'Petugas']);
+
+            // 1. Sub-day task for Officer A: 2.4 hours -> 0.1 day (not 1.0)
+            $subDayTask = Tugas::factory()->create([
+                'admin_id' => $admin->id,
+                'petugas_id' => $officerA->id,
+                'judul' => 'Tugas Cepat Sub Hari',
+                'status' => 'Selesai',
+                'tanggal_mulai' => '2026-11-26',
+                'tanggal_selesai' => '2026-11-27',
+                'created_at' => Carbon::create(2026, 11, 26, 10, 0, 0),
+                'tanggal_tindak_lanjut' => Carbon::create(2026, 11, 26, 12, 24, 0),
+            ]);
+            $this->assertEquals(0.1, $subDayTask->getEffectiveWorkingDurationDays());
+
+            // 2. Weekend-spanning task for Officer A: Fri 2026-11-20 00:00 -> Mon 2026-11-23 12:00 = 3.5 calendar days, 1.5 business days
+            $weekendTask = Tugas::factory()->create([
+                'admin_id' => $admin->id,
+                'petugas_id' => $officerA->id,
+                'judul' => 'Tugas Lintas Akhir Pekan',
+                'status' => 'Selesai',
+                'tanggal_mulai' => '2026-11-20',
+                'tanggal_selesai' => '2026-11-25',
+                'created_at' => Carbon::create(2026, 11, 19, 16, 0, 0),
+                'tanggal_tindak_lanjut' => Carbon::create(2026, 11, 23, 12, 0, 0),
+            ]);
+            $this->assertEquals(3.5, $weekendTask->getEffectiveWorkingDurationDays());
+            $this->assertEquals(1.5, $weekendTask->getEffectiveBusinessWorkingDurationDays());
+
+            // 3. Third on-time first-pass task for Officer A (total 3 on-time, 0 revisions -> score = 3*10 + 100*0.4 + 100*0.2 = 90.0)
+            Tugas::factory()->create([
+                'admin_id' => $admin->id,
+                'petugas_id' => $officerA->id,
+                'judul' => 'Tugas Tepat Waktu Ketiga',
+                'status' => 'Selesai',
+                'tanggal_mulai' => '2026-11-24',
+                'tanggal_selesai' => '2026-11-26',
+                'created_at' => Carbon::create(2026, 11, 24, 0, 0, 0),
+                'tanggal_tindak_lanjut' => Carbon::create(2026, 11, 25, 0, 0, 0),
+            ]);
+
+            // 4. Officer B: 5 late tasks with revisions (score = 0*10 + 5*4 + 0 + 0 = 20.0 < Officer A's 90.0)
+            for ($i = 1; $i <= 5; $i++) {
+                $late = Tugas::factory()->create([
+                    'admin_id' => $admin->id,
+                    'petugas_id' => $officerB->id,
+                    'judul' => 'Tugas Terlambat B #'.$i,
+                    'status' => 'Selesai',
+                    'tanggal_mulai' => '2026-11-01',
+                    'tanggal_selesai' => '2026-11-03',
+                    'created_at' => Carbon::create(2026, 11, 1, 0, 0, 0),
+                    'tanggal_tindak_lanjut' => Carbon::create(2026, 11, 10, 0, 0, 0),
+                ]);
+                $late->recordLog('revisi', 'Perlu Revisi', 'Perlu perbaikan', null, $admin->id);
+            }
+
+            $response = $this->actingAs($admin)->get(route('dashboard'));
+            $response->assertStatus(200);
+
+            // Verify Audit UI elements (dual Y-axis, toggles, methodology collapses, drilldown modal)
+            $response->assertSee('y-count', false);
+            $response->assertSee('y-days', false);
+            $response->assertSee('id="petugasScopeBtnGroup"', false);
+            $response->assertSee('id="petugasDayModeBtnGroup"', false);
+            $response->assertSee('id="trendDayModeBtnGroup"', false);
+            $response->assertSee('id="collapseMetodologiPetugas"', false);
+            $response->assertSee('id="collapseMetodologiTren"', false);
+            $response->assertSee('id="collapseKeteranganPetugas"', false);
+            $response->assertSee('id="collapseKeteranganPemberi"', false);
+            $response->assertSee('id="modalAuditGrafik"', false);
+
+            $petugasStats = collect($response->viewData('petugasStats'))->values();
+            $statA = $petugasStats->firstWhere('id', $officerA->id);
+            $statB = $petugasStats->firstWhere('id', $officerB->id);
+            $statC = $petugasStats->firstWhere('id', $officerC->id);
+
+            $this->assertNotNull($statA);
+            $this->assertNotNull($statB);
+            $this->assertNotNull($statC);
+
+            $this->assertEquals(90.0, $statA['score']);
+            $this->assertEquals(100.0, $statA['on_time_rate']);
+            $this->assertEquals(100.0, $statA['first_pass_rate']);
+            $this->assertNotNull($statA['median_durasi']);
+            $this->assertNotNull($statA['avg_sla_pct_kalender']);
+
+            $this->assertEquals(20.0, $statB['score']);
+            $this->assertEquals(0.0, $statB['on_time_rate']);
+            $this->assertEquals(0.0, $statB['first_pass_rate']);
+            $this->assertSame(5, $statB['revisi_total']);
+
+            $this->assertEquals(0.0, $statC['score']);
+            $this->assertNull($statC['chart_avg_durasi']);
+
+            // Officer A (3 on-time, quality) ranks strictly ahead of Officer B (5 late, revised)
+            $rankA = $petugasStats->search(fn (array $item): bool => $item['id'] === $officerA->id);
+            $rankB = $petugasStats->search(fn (array $item): bool => $item['id'] === $officerB->id);
+            $this->assertLessThan($rankB, $rankA);
+
+            // Top Aktif excludes 0-completed Officer C, while Semua includes C with null chart duration
+            $petugasChartDatasets = $response->viewData('petugasChartDatasets');
+            $this->assertNotContains($officerC->id, $petugasChartDatasets['top_aktif']['ids']);
+            $this->assertContains($officerC->id, $petugasChartDatasets['semua']['ids']);
+            $idxC = array_search($officerC->id, $petugasChartDatasets['semua']['ids'], true);
+            $this->assertNull($petugasChartDatasets['semua']['durasi_kalender'][$idxC]);
+        } finally {
+            Carbon::setTestNow();
+        }
     }
 }
